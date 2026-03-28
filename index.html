@@ -465,7 +465,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "2.1.1";
+    var APP_VERSION = "2.2.0";
     var APP_SETTINGS = {
       presetTasks: {},
       sharedShop: []
@@ -570,6 +570,9 @@
       if(action === "task_pending") return "שלח לבדיקה";
       if(action === "task_approved") return "אושר אחרי בדיקה";
       if(action === "task_rejected") return "לא אושר";
+      if(action === "shop_pending") return "בקשת מימוש פרס";
+      if(action === "shop_approved") return "פרס אושר";
+      if(action === "shop_rejected") return "פרס נדחה";
       return "עדכון";
     }
 
@@ -738,7 +741,8 @@
         rewardMother: "",
         rewardGrandma: "",
         logs: [],
-        pendingTasks: []
+        pendingTasks: [],
+        pendingShopRequests: []
       };
     }
 
@@ -939,16 +943,22 @@
       `;
     }
 
-    function renderShopForChild(id){
+    function renderShopForChild(id, data){
       if(!APP_SETTINGS.sharedShop.length){
         return '<div class="small">החנות עדיין ריקה</div>';
       }
 
+      var pendingShopRequests = (data && data.pendingShopRequests) || [];
       return APP_SETTINGS.sharedShop.map(function(item, index){
+        var isPending = pendingShopRequests.some(function(req){
+          return req.itemIndex === index && req.status === 'pending';
+        });
         return `
           <div class="shop-line">
             <div><strong>${item.name}</strong> • ${item.price} כוכבים</div>
-            <button class="shop mini" onclick="buyFromShop('${id}', ${index})">ממש</button>
+            ${isPending
+              ? `<button class="shop mini secondary" disabled>ממתין לאישור ⏳</button>`
+              : `<button class="shop mini" onclick="requestShopPurchase('${id}', ${index})">ממש</button>`}
           </div>
         `;
       }).join('');
@@ -976,12 +986,15 @@
 
     function renderPendingStatusForChild(id, data){
       var pendingTasks = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending'; });
-      if(!pendingTasks.length){
-        return '<div class="small">אין משימות שמחכות לבדיקה כרגע</div>';
-      }
-      return pendingTasks.map(function(pt){
-        return `<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`;
-      }).join('');
+      var pendingShopRequests = (data.pendingShopRequests || []).filter(function(req){ return req.status === 'pending'; });
+      var parts = [];
+      pendingTasks.forEach(function(pt){
+        parts.push(`<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`);
+      });
+      pendingShopRequests.forEach(function(req){
+        parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מימוש פרס</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}</div></div>`);
+      });
+      return parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לבדיקה כרגע</div>';
     }
 
     function renderShopManager(){
@@ -1029,6 +1042,7 @@
       var totalPercent = calcOverallPercent(data, id);
       var logs = data.logs || [];
       var pendingTasks = data.pendingTasks || [];
+      var pendingShopRequests = data.pendingShopRequests || [];
       var latest = logs.length ? logs[0] : null;
       var showBurst = latest && latest.action === "add";
       var burstParent = showBurst ? parentLabel(latest.parent) : "";
@@ -1129,13 +1143,13 @@
           </div>
 
           <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fdba74; border-radius:24px; text-align:right;">
-            <h3 style="margin-top:0">⏳ משימות שמחכות לבדיקה</h3>
+            <h3 style="margin-top:0">⏳ ממתין לבדיקה</h3>
             ${renderPendingStatusForChild(id, data)}
           </div>
 
           <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; border-radius:24px; text-align:right;">
             <h3 style="margin-top:0">🛒 חנות הפרסים</h3>
-            ${renderShopForChild(id)}
+            ${renderShopForChild(id, data)}
           </div>
 
           <div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d; border-radius:24px;">
@@ -1161,7 +1175,7 @@
       `;
     }
 
-    async function buyFromShop(id, itemIndex){
+    async function requestShopPurchase(id, itemIndex){
       var item = APP_SETTINGS.sharedShop[itemIndex];
       if(!item) return;
 
@@ -1172,8 +1186,75 @@
         return;
       }
 
-      var price = safeNumber(item.price);
-      if(id === "itai" || id === "noya"){
+      data.pendingShopRequests = data.pendingShopRequests || [];
+      var alreadyPending = data.pendingShopRequests.some(function(req){
+        return req.itemIndex === itemIndex && req.status === 'pending';
+      });
+      if(alreadyPending){
+        alert('הפרס הזה כבר ממתין לאישור ⏳');
+        return;
+      }
+
+      data.pendingShopRequests.unshift({
+        id: 'shop_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        itemIndex: itemIndex,
+        itemName: item.name,
+        price: safeNumber(item.price),
+        status: 'pending',
+        requestedAtText: nowText(),
+        requestedAtMillis: Date.now()
+      });
+
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: 'mother',
+        action: 'shop_pending',
+        amount: safeNumber(item.price),
+        note: 'בקשה למימוש פרס: ' + item.name,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+
+      await saveChildData(id, data);
+      alert('הבקשה נשלחה לאישור ההורים 🎁');
+      child(id);
+    }
+
+    async function approvePendingShop(childId, requestId){
+      var data = await getChildData(childId);
+      data.pendingShopRequests = data.pendingShopRequests || [];
+      var idx = data.pendingShopRequests.findIndex(function(req){ return req.id === requestId; });
+      if(idx === -1) return;
+      var req = data.pendingShopRequests[idx];
+      if(req.status !== 'pending') return;
+
+      if((childId === 'itai' || childId === 'noya') && user !== 'mother'){
+        alert('לילדים האלה רק אמא יכולה לאשר מימוש פרס');
+        return;
+      }
+
+      var total = getCurrentTotal(data, childId);
+      if(total < safeNumber(req.price)){
+        data.pendingShopRequests.splice(idx,1);
+        var logsFail = data.logs || [];
+        logsFail.unshift({
+          parent: user,
+          action: 'shop_rejected',
+          amount: safeNumber(req.price),
+          note: 'אין מספיק כוכבים לפרס: ' + req.itemName,
+          createdAtText: nowText(),
+          createdAtMillis: Date.now()
+        });
+        data.logs = logsFail.slice(0,100);
+        await saveChildData(childId, data);
+        alert('לא ניתן לאשר, אין מספיק כוכבים כרגע');
+        parent(user);
+        return;
+      }
+
+      var price = safeNumber(req.price);
+      if(childId === "itai" || childId === "noya"){
         data.mother = Math.max(0, safeNumber(data.mother) - price);
       } else {
         var pools = [
@@ -1191,20 +1272,48 @@
         });
       }
 
+      data.pendingShopRequests.splice(idx,1);
       var logs = data.logs || [];
       logs.unshift({
-        parent: 'mother',
-        action: 'shop_buy',
+        parent: user,
+        action: 'shop_approved',
         amount: price,
-        note: 'נרכש מהחנות: ' + item.name,
+        note: 'אושר מימוש פרס: ' + req.itemName,
         createdAtText: nowText(),
         createdAtMillis: Date.now()
       });
       data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert('הפרס אושר והכוכבים עודכנו 🎉');
+      parent(user);
+    }
 
-      await saveChildData(id, data);
-      alert('איזה כיף! בחרת: ' + item.name + ' 🎁');
-      child(id);
+    async function rejectPendingShop(childId, requestId){
+      var data = await getChildData(childId);
+      data.pendingShopRequests = data.pendingShopRequests || [];
+      var idx = data.pendingShopRequests.findIndex(function(req){ return req.id === requestId; });
+      if(idx === -1) return;
+      var req = data.pendingShopRequests[idx];
+      if(req.status !== 'pending') return;
+      if((childId === 'itai' || childId === 'noya') && user !== 'mother'){
+        alert('לילדים האלה רק אמא יכולה לדחות מימוש פרס');
+        return;
+      }
+
+      data.pendingShopRequests.splice(idx,1);
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: user,
+        action: 'shop_rejected',
+        amount: safeNumber(req.price),
+        note: 'נדחתה בקשת פרס: ' + req.itemName,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert('הבקשה לפרס נדחתה');
+      parent(user);
     }
 
     async function requestQuickTask(childId, role, taskIndex){
@@ -1307,8 +1416,8 @@
       for(var i=0;i<ids.length;i++){
         var id = ids[i];
         var data = await getChildData(id);
-        var pending = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending' && pt.role === role; });
-        pending.forEach(function(pt){
+        var pendingTasks = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending' && pt.role === role; });
+        pendingTasks.forEach(function(pt){
           parts.push(`
             <div class="task-line">
               <div><strong>${childLabel(id)}</strong> • ${pt.taskName} • ${pt.stars} כוכבים<div class="small">${pt.requestedAtText || ''}</div></div>
@@ -1319,9 +1428,22 @@
             </div>
           `);
         });
+
+        var pendingShop = (data.pendingShopRequests || []).filter(function(req){ return req.status === 'pending'; });
+        pendingShop.forEach(function(req){
+          parts.push(`
+            <div class="task-line">
+              <div><strong>${childLabel(id)}</strong> • בקשת פרס: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText || ''}</div></div>
+              <div>
+                <button class="mini shop" onclick="approvePendingShop('${id}','${req.id}')">אשר פרס</button>
+                <button class="danger mini" onclick="rejectPendingShop('${id}','${req.id}')">דחה</button>
+              </div>
+            </div>
+          `);
+        });
       }
       var el = document.getElementById('pendingApprovals');
-      if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות שמחכות לאישור כרגע</div>';
+      if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לאישור כרגע</div>';
     }
 
     async function loadParentSummary(role){
@@ -1494,8 +1616,8 @@
           ${renderPresetTasksEditor(role)}
 
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);">
-            <h3 style="margin-top:0">משימות שמחכות לאישור</h3>
-            <div id="pendingApprovals"><div class="small">טוען משימות...</div></div>
+            <h3 style="margin-top:0">בקשות שמחכות לאישור</h3>
+            <div id="pendingApprovals"><div class="small">טוען בקשות...</div></div>
           </div>
 
           ${renderShopEditor()}
