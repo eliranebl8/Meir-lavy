@@ -369,7 +369,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "1.2";
+    var APP_VERSION = "1.3";
 
     function safeNumber(v){ return Number(v || 0); }
     function parentLabel(role){
@@ -590,7 +590,7 @@
         `ברוך הבא ${childLabel(id)} ✨`
       ];
       var message = messages[Math.floor(Math.random() * messages.length)];
-      var extraIcons = id === "noya" ? "🦋 🌈 💖 ⭐ ✨" : id === "itai" ? "🐻 🚀 ⭐ 🎈 ✨" : id === "meir" ? "🦁 ⭐🏆 🎉 ✨" : "🐯 🌟 🎈 ⭐ 💫";
+      var extraIcons = id === "noya" ? "🦋 🌈 💖 ⭐ ✨" : id === "itai" ? "🐻 🚀 ⭐ 🎈 ✨" : id === "meir" ? "🦁 ⭐ 🏆 🎉 ✨" : "🐯 🌟 🎈 ⭐ 💫";
 
       document.getElementById("app").innerHTML = `
         <div class="card welcome-stage app-shimmer">
@@ -603,7 +603,12 @@
           </div>
           <div style="margin-top:18px;">
             <input id="childPass" type="password" placeholder="הסיסמה שלך">
-            <br>
+            <div style="margin-top:6px; font-size:14px; color:#6b7280;">
+              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" onchange="togglePasswordVisibility('childPass', this)">
+                הצג סיסמה
+              </label>
+            </div>
             <button onclick="checkChildLogin('${id}')">כניסה</button>
             <br><br>
             <button class="secondary" onclick="${(id === 'itai' || id === 'noya') ? 'showMoreKids()' : 'home()'}">חזרה</button>
@@ -758,6 +763,12 @@
             <h3 style="margin-top:0">🔐 שינוי הסיסמה שלך</h3>
             <div class="small">רק אתה יכול לשנות את הסיסמה שלך</div>
             <input id="kidNewPass" type="password" placeholder="סיסמה חדשה">
+            <div style="margin-top:6px; font-size:14px; color:#6b7280;">
+              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" onchange="togglePasswordVisibility('kidNewPass', this)">
+                הצג סיסמה
+              </label>
+            </div>
             <br><button onclick="changeOwnChildPassword('${id}')">שמור סיסמה חדשה</button>
           </div>
 
@@ -1067,6 +1078,12 @@
       parent(user);
     }
 
+    function togglePasswordVisibility(inputId, checkboxEl){
+      var input = document.getElementById(inputId);
+      if(!input) return;
+      input.type = checkboxEl && checkboxEl.checked ? "text" : "password";
+    }
+
     async function changeOwnChildPassword(child){
       var newPass = document.getElementById("kidNewPass").value;
       if(newPass === ""){
@@ -1075,7 +1092,11 @@
       }
 
       CHILD_PASSWORDS[child] = newPass;
-      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      await db.collection("settings").doc("app").set({
+        passwords: PASSWORDS,
+        childPasswords: CHILD_PASSWORDS
+      }, { merge:true });
+
       alert("הסיסמה החדשה נשמרה");
       childLogin(child);
     }
