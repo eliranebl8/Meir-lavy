@@ -390,7 +390,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "1.6";
+    var APP_VERSION = "1.7";
 
     function safeNumber(v){ return Number(v || 0); }
     function parentLabel(role){
@@ -875,15 +875,53 @@
         `;
         passwordsBlock = `
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);">
-            <h3 style="margin-top:0">הסיסמאות של כולם</h3>
-            <div style="max-height:340px; overflow:auto; border:1px solid #e5e7eb; border-radius:18px; padding:10px; background:#fff;">
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אבא</strong><div style="margin-top:6px">${PASSWORDS.father}</div></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אמא</strong><div style="margin-top:6px">${PASSWORDS.mother}</div></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>סבתא שמחה</strong><div style="margin-top:6px">${PASSWORDS.grandma}</div></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>מאיר</strong><div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>לביא</strong><div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>איתי</strong><div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none;"><strong>נויה</strong><div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <h3 style="margin:0">הסיסמאות של כולם</h3>
+              <button onclick="togglePasswordsPanel()">הצג / הסתר סיסמאות</button>
+            </div>
+            <div id="passwordsPanel" style="display:none; max-height:380px; overflow:auto; border:1px solid #e5e7eb; border-radius:18px; padding:10px; background:#fff; margin-top:12px;">
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
+                <strong>אבא</strong>
+                <div style="margin-top:6px">${PASSWORDS.father}</div>
+                <input id="passFather" placeholder="סיסמה חדשה לאבא" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificPassword('father','passFather')">שמור סיסמה</button>
+              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
+                <strong>אמא</strong>
+                <div style="margin-top:6px">${PASSWORDS.mother}</div>
+                <input id="passMother" placeholder="סיסמה חדשה לאמא" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificPassword('mother','passMother')">שמור סיסמה</button>
+              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
+                <strong>סבתא שמחה</strong>
+                <div style="margin-top:6px">${PASSWORDS.grandma}</div>
+                <input id="passGrandma" placeholder="סיסמה חדשה לסבתא" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificPassword('grandma','passGrandma')">שמור סיסמה</button>
+              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
+                <strong>מאיר</strong>
+                <div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div>
+                <input id="passMeir" placeholder="סיסמה חדשה למאיר" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificChildPassword('meir','passMeir')">שמור סיסמה</button>
+              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
+                <strong>לביא</strong>
+                <div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div>
+                <input id="passLavi" placeholder="סיסמה חדשה ללביא" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificChildPassword('lavi','passLavi')">שמור סיסמה</button>
+              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
+                <strong>איתי</strong>
+                <div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div>
+                <input id="passItai" placeholder="סיסמה חדשה לאיתי" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificChildPassword('itai','passItai')">שמור סיסמה</button>
+              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none;">
+                <strong>נויה</strong>
+                <div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div>
+                <input id="passNoya" placeholder="סיסמה חדשה לנויה" style="width:90%; margin-top:8px;">
+                <button onclick="changeSpecificChildPassword('noya','passNoya')">שמור סיסמה</button>
+              </div>
             </div>
           </div>
         `;
@@ -960,6 +998,40 @@
       `;
 
       loadParentSummary(role);
+    }
+
+    function togglePasswordsPanel(){
+      var el = document.getElementById('passwordsPanel');
+      if(!el) return;
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    async function changeSpecificPassword(roleKey, inputId){
+      var el = document.getElementById(inputId);
+      if(!el) return;
+      var newPass = el.value;
+      if(newPass === ""){
+        alert("הסיסמה לא יכולה להיות ריקה");
+        return;
+      }
+      PASSWORDS[roleKey] = newPass;
+      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      alert("הסיסמה נשמרה");
+      parent(user);
+    }
+
+    async function changeSpecificChildPassword(childKey, inputId){
+      var el = document.getElementById(inputId);
+      if(!el) return;
+      var newPass = el.value;
+      if(newPass === ""){
+        alert("הסיסמה לא יכולה להיות ריקה");
+        return;
+      }
+      CHILD_PASSWORDS[childKey] = newPass;
+      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      alert("הסיסמה נשמרה");
+      parent(user);
     }
 
     function getSelectedChild(){
