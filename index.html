@@ -465,11 +465,71 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "2.1.0";
+    var APP_VERSION = "2.1.1";
     var APP_SETTINGS = {
-      presetTasks: { father: [], mother: [], grandma: [] },
+      presetTasks: {},
       sharedShop: []
     };
+    var SELECTED_PARENT_CHILD = { father: 'meir', mother: 'meir', grandma: 'meir' };
+
+    function createEmptyPresetTasks(){
+      return {
+        meir: { father: [], mother: [], grandma: [] },
+        lavi: { father: [], mother: [], grandma: [] },
+        itai: { father: [], mother: [], grandma: [] },
+        noya: { father: [], mother: [], grandma: [] }
+      };
+    }
+
+    function normalizePresetTasks(raw){
+      var base = createEmptyPresetTasks();
+      if(!raw || typeof raw !== 'object') return base;
+
+      var childKeys = ['meir','lavi','itai','noya'];
+      var roleKeys = ['father','mother','grandma'];
+
+      // old format migration: { father:[], mother:[], grandma:[] }
+      var looksOld = roleKeys.some(function(role){
+        return Array.isArray(raw[role]);
+      });
+
+      if(looksOld){
+        if(Array.isArray(raw.father)){
+          base.meir.father = raw.father.slice(0,3);
+          base.lavi.father = raw.father.slice(0,3);
+        }
+        if(Array.isArray(raw.mother)){
+          childKeys.forEach(function(childId){
+            base[childId].mother = raw.mother.slice(0,3);
+          });
+        }
+        if(Array.isArray(raw.grandma)){
+          base.meir.grandma = raw.grandma.slice(0,3);
+          base.lavi.grandma = raw.grandma.slice(0,3);
+        }
+        return base;
+      }
+
+      childKeys.forEach(function(childId){
+        var childObj = raw[childId] || {};
+        roleKeys.forEach(function(role){
+          base[childId][role] = Array.isArray(childObj[role]) ? childObj[role].slice(0,3) : [];
+        });
+      });
+
+      return base;
+    }
+
+    function getPresetTasks(role, childId){
+      var normalized = APP_SETTINGS.presetTasks || {};
+      if(!normalized[childId]) return [];
+      return Array.isArray(normalized[childId][role]) ? normalized[childId][role] : [];
+    }
+
+    function setSelectedChild(role, childId){
+      SELECTED_PARENT_CHILD[role] = childId;
+      parent(role);
+    }
 
     function safeNumber(v){ return Number(v || 0); }
 
@@ -615,7 +675,7 @@
           noya: DEFAULT_CHILD_PASSWORDS.noya
         };
         APP_SETTINGS = {
-          presetTasks: { father: [], mother: [], grandma: [] },
+          presetTasks: createEmptyPresetTasks(),
           sharedShop: []
         };
 
@@ -643,11 +703,7 @@
         };
 
         APP_SETTINGS = {
-          presetTasks: {
-            father: Array.isArray(data.presetTasks?.father) ? data.presetTasks.father.slice(0,3) : [],
-            mother: Array.isArray(data.presetTasks?.mother) ? data.presetTasks.mother.slice(0,3) : [],
-            grandma: Array.isArray(data.presetTasks?.grandma) ? data.presetTasks.grandma.slice(0,3) : []
-          },
+          presetTasks: normalizePresetTasks(data.presetTasks),
           sharedShop: Array.isArray(data.sharedShop) ? data.sharedShop : []
         };
 
@@ -903,7 +959,7 @@
       var pendingTasks = (data && data.pendingTasks) || [];
       var html = [];
       roles.forEach(function(role){
-        var tasks = APP_SETTINGS.presetTasks[role] || [];
+        var tasks = getPresetTasks(role, id);
         tasks.forEach(function(task, index){
           var isPending = pendingTasks.some(function(pt){
             return pt.role === role && pt.taskIndex === index && pt.status === 'pending';
@@ -915,7 +971,7 @@
           }
         });
       });
-      return html.length ? html.join('') : '<div class="small">אין משימות מוכנות עדיין</div>';
+      return html.length ? html.join('') : '<div class="small">אין משימות מוכנות עדיין לילד הזה</div>';
     }
 
     function renderPendingStatusForChild(id, data){
@@ -943,17 +999,17 @@
       }).join('');
     }
 
-    function renderTaskManager(role){
-      var tasks = APP_SETTINGS.presetTasks[role] || [];
+    function renderTaskManager(role, childId){
+      var tasks = getPresetTasks(role, childId);
       if(!tasks.length){
-        return '<div class="small">אין משימות מוכנות עדיין</div>';
+        return '<div class="small">אין משימות מוכנות עדיין לילד הזה</div>';
       }
 
       return tasks.map(function(task, index){
         return `
           <div class="task-line">
             <div><strong>${task.name}</strong> • ${task.stars} כוכבים</div>
-            <button class="danger mini" onclick="removePresetTask('${role}', ${index})">מחק</button>
+            <button class="danger mini" onclick="removePresetTask('${role}', '${childId}', ${index})">מחק</button>
           </div>
         `;
       }).join('');
@@ -1152,7 +1208,7 @@
     }
 
     async function requestQuickTask(childId, role, taskIndex){
-      var task = (APP_SETTINGS.presetTasks[role] || [])[taskIndex];
+      var task = getPresetTasks(role, childId)[taskIndex];
       if(!task) return;
 
       var data = await getChildData(childId);
@@ -1320,16 +1376,18 @@
     }
 
     function renderPresetTasksEditor(role){
+      var childId = getSelectedChild();
+      var tasks = getPresetTasks(role, childId);
       return `
         <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f0fdf4);">
-          <h3 style="margin-top:0">משימות מוכנות של ${parentLabel(role)}</h3>
-          <div class="small">אפשר לשמור עד 3 משימות מוכנות</div>
+          <h3 style="margin-top:0">משימות מוכנות של ${parentLabel(role)} עבור ${childLabel(childId)}</h3>
+          <div class="small">המשימות כאן אישיות לילד שנבחר כרגע • אפשר לשמור עד 3</div>
           <input id="taskName" placeholder="שם המשימה" style="width:90%;">
           <input id="taskStars" type="number" placeholder="כמה כוכבים" style="width:90%;">
           <br>
           <button onclick="addPresetTask('${role}')">שמור משימה</button>
-          <div style="margin-top:10px; text-align:right;">${renderTaskManager(role)}</div>
-          <div class="task-btn-wrap" style="margin-top:12px;">${(APP_SETTINGS.presetTasks[role] || []).map(function(task, i){ return `<button class="mini ${role}" onclick="applyPresetTaskFromParent('${role}', ${i})">${task.name} +${task.stars}</button>`; }).join('') || '<div class="small">אין משימות מוכנות ללחיצה מהירה</div>'}</div>
+          <div style="margin-top:10px; text-align:right;">${renderTaskManager(role, childId)}</div>
+          <div class="task-btn-wrap" style="margin-top:12px;">${tasks.map(function(task, i){ return `<button class="mini ${role}" onclick="applyPresetTaskFromParent('${role}', ${i})">${task.name} +${task.stars}</button>`; }).join('') || '<div class="small">אין משימות מוכנות ללחיצה מהירה לילד הזה</div>'}</div>
         </div>
       `;
     }
@@ -1355,8 +1413,8 @@
 
       if(role === "father"){
         childRadioOptions = `
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" checked> מאיר</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi"> לביא</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" ${SELECTED_PARENT_CHILD.father === 'meir' ? 'checked' : ''} onchange="setSelectedChild('father','meir')"> מאיר</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi" ${SELECTED_PARENT_CHILD.father === 'lavi' ? 'checked' : ''} onchange="setSelectedChild('father','lavi')"> לביא</label>
         `;
         passwordsBlock = `
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);">
@@ -1385,15 +1443,15 @@
         `;
       } else if(role === "mother"){
         childRadioOptions = `
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" checked> מאיר</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi"> לביא</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="itai"> איתי</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="noya"> נויה</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" ${SELECTED_PARENT_CHILD.mother === 'meir' ? 'checked' : ''} onchange="setSelectedChild('mother','meir')"> מאיר</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi" ${SELECTED_PARENT_CHILD.mother === 'lavi' ? 'checked' : ''} onchange="setSelectedChild('mother','lavi')"> לביא</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="itai" ${SELECTED_PARENT_CHILD.mother === 'itai' ? 'checked' : ''} onchange="setSelectedChild('mother','itai')"> איתי</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="noya" ${SELECTED_PARENT_CHILD.mother === 'noya' ? 'checked' : ''} onchange="setSelectedChild('mother','noya')"> נויה</label>
         `;
       } else {
         childRadioOptions = `
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" checked> מאיר</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi"> לביא</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" ${SELECTED_PARENT_CHILD.grandma === 'meir' ? 'checked' : ''} onchange="setSelectedChild('grandma','meir')"> מאיר</label>
+          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi" ${SELECTED_PARENT_CHILD.grandma === 'lavi' ? 'checked' : ''} onchange="setSelectedChild('grandma','lavi')"> לביא</label>
         `;
       }
 
@@ -1496,7 +1554,7 @@
 
     async function applyPresetTaskFromParent(role, taskIndex){
       var childId = getSelectedChild();
-      var task = (APP_SETTINGS.presetTasks[role] || [])[taskIndex];
+      var task = getPresetTasks(role, childId)[taskIndex];
       if(!task) return;
       var data = await getChildData(childId);
       if(role === 'father') data.father = safeNumber(data.father) + safeNumber(task.stars);
@@ -1513,23 +1571,26 @@
     async function addPresetTask(role){
       var name = document.getElementById('taskName').value.trim();
       var stars = Number(document.getElementById('taskStars').value);
+      var childId = getSelectedChild();
       if(!name || !stars || stars < 1){
         alert('מלא שם משימה וכמות כוכבים תקינה');
         return;
       }
-      APP_SETTINGS.presetTasks[role] = APP_SETTINGS.presetTasks[role] || [];
-      if(APP_SETTINGS.presetTasks[role].length >= 3){
-        alert('אפשר לשמור עד 3 משימות מוכנות');
+      APP_SETTINGS.presetTasks = normalizePresetTasks(APP_SETTINGS.presetTasks);
+      APP_SETTINGS.presetTasks[childId][role] = APP_SETTINGS.presetTasks[childId][role] || [];
+      if(APP_SETTINGS.presetTasks[childId][role].length >= 3){
+        alert('אפשר לשמור עד 3 משימות מוכנות לילד הזה');
         return;
       }
-      APP_SETTINGS.presetTasks[role].push({ name: name, stars: stars });
+      APP_SETTINGS.presetTasks[childId][role].push({ name: name, stars: stars });
       await saveAppSettings();
-      alert('המשימה נשמרה');
+      alert('המשימה נשמרה עבור ' + childLabel(childId));
       parent(user);
     }
 
-    async function removePresetTask(role, index){
-      APP_SETTINGS.presetTasks[role].splice(index, 1);
+    async function removePresetTask(role, childId, index){
+      APP_SETTINGS.presetTasks = normalizePresetTasks(APP_SETTINGS.presetTasks);
+      APP_SETTINGS.presetTasks[childId][role].splice(index, 1);
       await saveAppSettings();
       parent(user);
     }
@@ -1555,7 +1616,8 @@
 
     function getSelectedChild(){
       var selected = document.querySelector('input[name="childChoice"]:checked');
-      return selected ? selected.value : 'meir';
+      if(selected) return selected.value;
+      return SELECTED_PARENT_CHILD[user] || 'meir';
     }
 
     async function addStars(){ await change("add"); }
@@ -1736,7 +1798,7 @@
 
       PASSWORDS = { father: DEFAULT_PASSWORDS.father, mother: DEFAULT_PASSWORDS.mother, grandma: DEFAULT_PASSWORDS.grandma };
       CHILD_PASSWORDS = { meir: DEFAULT_CHILD_PASSWORDS.meir, lavi: DEFAULT_CHILD_PASSWORDS.lavi, itai: DEFAULT_CHILD_PASSWORDS.itai, noya: DEFAULT_CHILD_PASSWORDS.noya };
-      APP_SETTINGS = { presetTasks: { father: [], mother: [], grandma: [] }, sharedShop: [] };
+      APP_SETTINGS = { presetTasks: createEmptyPresetTasks(), sharedShop: [] };
       await saveAppSettings();
       alert("המערכת אופסה בהצלחה");
       home();
