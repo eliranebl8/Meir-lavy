@@ -153,15 +153,47 @@
       margin-top: 14px;
     }
     .row.three {
-      display: flex;
+      display: grid;
+      grid-template-columns: 1fr;
       gap: 12px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      padding-bottom: 8px;
-      scroll-snap-type: x proximity;
-      -webkit-overflow-scrolling: touch;
+      overflow: visible;
+      padding-bottom: 0;
     }
-    .stat { border-radius: 20px; padding: 16px; }
+    .stat {
+      border-radius: 22px;
+      padding: 18px 16px;
+      min-width: 0;
+      box-shadow: 0 10px 24px rgba(0,0,0,.06);
+      border: 1px solid rgba(255,255,255,.75);
+      position: relative;
+      overflow: hidden;
+    }
+    .stat .big {
+      font-size: 38px;
+      line-height: 1;
+      margin-top: 8px;
+    }
+    .stat-label {
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .stat-sub {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+    .stats-total-top {
+      margin-top: 14px;
+      background: linear-gradient(135deg,#fff7ed,#fecdd3);
+      border: 2px solid #fde68a;
+      box-shadow: 0 16px 32px rgba(251,146,60,.16);
+    }
+    .stats-grid-parents {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
     .stat.f { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
     .stat.m { background: linear-gradient(135deg, #fdf2f8, #fce7f3); }
     .stat.g { background: linear-gradient(135deg, #f5f3ff, #ede9fe); }
@@ -191,6 +223,7 @@
       background: linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
       transform: skewX(-20deg);
       animation: appShine 5.5s ease-in-out infinite;
+          pointer-events: none;
     }
 
     .logs-box {
@@ -285,6 +318,7 @@
       background: linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);
       transform: skewX(-20deg);
       animation: appShine 4.5s ease-in-out infinite;
+          pointer-events: none;
     }
 
     .floaty { animation: floaty 2.6s ease-in-out infinite; }
@@ -326,6 +360,7 @@
       background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
       transform: skewX(-20deg);
       animation: shineMove 2.4s ease-in-out infinite;
+          pointer-events: none;
     }
 
     .task-line, .shop-line {
@@ -410,6 +445,7 @@
       .row { grid-template-columns: 1fr; }
       .kid-title { font-size: 28px; }
       .task-line, .shop-line { justify-content: center; }
+      .stat .big { font-size: 34px; }
     }
   </style></head>
 <body>
@@ -429,7 +465,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "2.0.2";
+    var APP_VERSION = "2.1.0";
     var APP_SETTINGS = {
       presetTasks: { father: [], mother: [], grandma: [] },
       sharedShop: []
@@ -471,7 +507,21 @@
       if(action === "reset") return "איפוס מלא";
       if(action === "shop_buy") return "קנה מהחנות";
       if(action === "task_quick") return "משימה מוכנה";
+      if(action === "task_pending") return "שלח לבדיקה";
+      if(action === "task_approved") return "אושר אחרי בדיקה";
+      if(action === "task_rejected") return "לא אושר";
       return "עדכון";
+    }
+
+
+    function encouragementText(current, target, who){
+      var percent = Math.round((current / Math.max(1, target)) * 100);
+      if(current >= target) return "אלוף! הגעת ליעד של " + who + " 🎉";
+      if(percent >= 90) return "וואו, אתה ממש רגע מהיעד של " + who + "! 🚀";
+      if(percent >= 75) return "מדהים! עוד קצת ואתה מגיע ליעד של " + who + " ⭐";
+      if(percent >= 50) return "חצי דרך כבר מאחוריך מול " + who + " 💪";
+      if(percent >= 25) return "איזה יופי, אתה מתקדם נהדר מול " + who + " 🌟";
+      return "התחלה מצוינת, ממשיכים לאסוף כוכבים מול " + who + " ✨";
     }
 
     function funnyWrongPassword(){
@@ -485,18 +535,7 @@
       return messages[Math.floor(Math.random() * messages.length)];
     }
 
-    
-    function encouragementText(current, target, who){
-      var percent = Math.round((current / Math.max(1, target)) * 100);
-      if(current >= target) return "אלוף! הגעת ליעד של " + who + " 🎉";
-      if(percent >= 90) return "וואו, אתה ממש רגע מהיעד של " + who + "! 🚀";
-      if(percent >= 75) return "מדהים! עוד קצת ואתה מגיע ליעד של " + who + " ⭐";
-      if(percent >= 50) return "חצי דרך כבר מאחוריך מול " + who + " 💪";
-      if(percent >= 25) return "איזה יופי, אתה מתקדם נהדר מול " + who + " 🌟";
-      return "התחלה מצוינת, ממשיכים לאסוף כוכבים מול " + who + " ✨";
-    }
-
-function nowText(){
+    function nowText(){
       return new Intl.DateTimeFormat("he-IL", { dateStyle:"short", timeStyle:"short" }).format(new Date());
     }
 
@@ -642,7 +681,8 @@ function nowText(){
         rewardFather: "",
         rewardMother: "",
         rewardGrandma: "",
-        logs: []
+        logs: [],
+        pendingTasks: []
       };
     }
 
@@ -858,16 +898,34 @@ function nowText(){
       }).join('');
     }
 
-    function renderQuickTaskButtons(id){
+    function renderQuickTaskButtons(id, data){
       var roles = getAllowedRolesForChild(id);
+      var pendingTasks = (data && data.pendingTasks) || [];
       var html = [];
       roles.forEach(function(role){
         var tasks = APP_SETTINGS.presetTasks[role] || [];
         tasks.forEach(function(task, index){
-          html.push(`<button class="mini ${role}" onclick="runQuickTask('${id}', '${role}', ${index})">${task.name} +${task.stars}</button>`);
+          var isPending = pendingTasks.some(function(pt){
+            return pt.role === role && pt.taskIndex === index && pt.status === 'pending';
+          });
+          if(isPending){
+            html.push(`<button class="mini secondary" disabled>${task.name} • ממתין לבדיקה ⏳</button>`);
+          } else {
+            html.push(`<button class="mini ${role}" onclick="requestQuickTask('${id}', '${role}', ${index})">${task.name} +${task.stars}</button>`);
+          }
         });
       });
       return html.length ? html.join('') : '<div class="small">אין משימות מוכנות עדיין</div>';
+    }
+
+    function renderPendingStatusForChild(id, data){
+      var pendingTasks = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending'; });
+      if(!pendingTasks.length){
+        return '<div class="small">אין משימות שמחכות לבדיקה כרגע</div>';
+      }
+      return pendingTasks.map(function(pt){
+        return `<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`;
+      }).join('');
     }
 
     function renderShopManager(){
@@ -914,6 +972,7 @@ function nowText(){
       var totalLevel = calcLevel(data, id);
       var totalPercent = calcOverallPercent(data, id);
       var logs = data.logs || [];
+      var pendingTasks = data.pendingTasks || [];
       var latest = logs.length ? logs[0] : null;
       var showBurst = latest && latest.action === "add";
       var burstParent = showBurst ? parentLabel(latest.parent) : "";
@@ -955,20 +1014,21 @@ function nowText(){
         `;
       }
 
-      var statsHtml = `
-        <div class="stat total">
-          <div>כל הכוכבים</div>
-          <div class="big">${totalCurrent}</div>
-          <div class="small">${totalPercent}% מהיעד הכולל</div>
+      var totalCardHtml = `
+        <div class="stat total stats-total-top shine-card">
+          <div class="stat-label">כל הכוכבים שלך ⭐</div>
+          <div class="big pop-number">${totalCurrent}</div>
+          <div class="stat-sub">${totalPercent}% מהיעד הכולל</div>
           <div class="level-chip">${totalLevel}</div>
         </div>
       `;
+      var statsHtml = "";
       var goalsHtml = buildGoalCard("היעד הכולל שלך", totalCurrent, totalTarget, "כל הפרסים בדרך", "total");
 
       if(!isMotherOnly){
         statsHtml += `
           <div class="stat f ${showBurst && latest && latest.parent === 'father' ? 'shine-card' : ''}">
-            <div>כוכבים מאבא</div>
+            <div class="stat-label">כוכבים מאבא</div>
             <div class="big ${showBurst && latest && latest.parent === 'father' ? 'pop-number' : ''}">${father}</div>
           </div>
         `;
@@ -977,7 +1037,7 @@ function nowText(){
 
       statsHtml += `
         <div class="stat m ${showBurst && latest && latest.parent === 'mother' ? 'shine-card' : ''}">
-          <div>${isMotherOnly ? 'הכוכבים שלך מאמא' : 'כוכבים מאמא'}</div>
+          <div class="stat-label">${isMotherOnly ? 'הכוכבים שלך מאמא' : 'כוכבים מאמא'}</div>
           <div class="big ${showBurst && latest && latest.parent === 'mother' ? 'pop-number' : ''}">${mother}</div>
         </div>
       `;
@@ -986,7 +1046,7 @@ function nowText(){
       if(!isMotherOnly){
         statsHtml += `
           <div class="stat g ${showBurst && latest && latest.parent === 'grandma' ? 'shine-card' : ''}">
-            <div>כוכבים מסבתא שמחה</div>
+            <div class="stat-label">כוכבים מסבתא שמחה</div>
             <div class="big ${showBurst && latest && latest.parent === 'grandma' ? 'pop-number' : ''}">${grandma}</div>
           </div>
         `;
@@ -1002,12 +1062,19 @@ function nowText(){
 
           ${burstHtml}
 
-          <div class="row three">${statsHtml}</div>
+          ${totalCardHtml}
+
+          <div class="stats-grid-parents">${statsHtml}</div>
           ${goalsHtml}
 
           <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac; border-radius:24px;">
             <h3 style="margin-top:0">⚡ משימות מוכנות</h3>
-            <div class="task-btn-wrap">${renderQuickTaskButtons(id)}</div>
+            <div class="task-btn-wrap">${renderQuickTaskButtons(id, data)}</div>
+          </div>
+
+          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fdba74; border-radius:24px; text-align:right;">
+            <h3 style="margin-top:0">⏳ משימות שמחכות לבדיקה</h3>
+            ${renderPendingStatusForChild(id, data)}
           </div>
 
           <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; border-radius:24px; text-align:right;">
@@ -1084,30 +1151,121 @@ function nowText(){
       child(id);
     }
 
-    async function runQuickTask(childId, role, taskIndex){
+    async function requestQuickTask(childId, role, taskIndex){
       var task = (APP_SETTINGS.presetTasks[role] || [])[taskIndex];
       if(!task) return;
 
-      var originalUser = user;
       var data = await getChildData(childId);
-      if(role === 'father') data.father = safeNumber(data.father) + safeNumber(task.stars);
-      if(role === 'mother') data.mother = safeNumber(data.mother) + safeNumber(task.stars);
-      if(role === 'grandma') data.grandma = safeNumber(data.grandma) + safeNumber(task.stars);
+      data.pendingTasks = data.pendingTasks || [];
+      var exists = data.pendingTasks.some(function(pt){
+        return pt.role === role && pt.taskIndex === taskIndex && pt.status === 'pending';
+      });
+      if(exists){
+        alert('המשימה הזאת כבר ממתינה לבדיקה ⏳');
+        return;
+      }
 
+      data.pendingTasks.unshift({
+        id: 'pt_' + Date.now() + '_' + Math.floor(Math.random()*100000),
+        role: role,
+        taskIndex: taskIndex,
+        taskName: task.name,
+        stars: safeNumber(task.stars),
+        status: 'pending',
+        requestedAtText: nowText(),
+        requestedAtMillis: Date.now()
+      });
       var logs = data.logs || [];
       logs.unshift({
         parent: role,
-        action: 'task_quick',
+        action: 'task_pending',
         amount: safeNumber(task.stars),
         note: task.name,
         createdAtText: nowText(),
         createdAtMillis: Date.now()
       });
       data.logs = logs.slice(0,100);
-
       await saveChildData(childId, data);
-      user = originalUser;
+      alert('המשימה נשלחה לבדיקה ✅');
       child(childId);
+    }
+
+    async function approvePendingTask(childId, taskId){
+      var data = await getChildData(childId);
+      data.pendingTasks = data.pendingTasks || [];
+      var idx = data.pendingTasks.findIndex(function(pt){ return pt.id === taskId; });
+      if(idx === -1) return;
+      var pt = data.pendingTasks[idx];
+      if(pt.role !== user){
+        alert('אפשר לאשר רק משימות שלך');
+        return;
+      }
+      if(pt.role === 'father') data.father = safeNumber(data.father) + safeNumber(pt.stars);
+      if(pt.role === 'mother') data.mother = safeNumber(data.mother) + safeNumber(pt.stars);
+      if(pt.role === 'grandma') data.grandma = safeNumber(data.grandma) + safeNumber(pt.stars);
+      data.pendingTasks.splice(idx,1);
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: pt.role,
+        action: 'task_approved',
+        amount: safeNumber(pt.stars),
+        note: pt.taskName,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert('המשימה אושרה והכוכבים נוספו 🌟');
+      parent(user);
+    }
+
+    async function rejectPendingTask(childId, taskId){
+      var data = await getChildData(childId);
+      data.pendingTasks = data.pendingTasks || [];
+      var idx = data.pendingTasks.findIndex(function(pt){ return pt.id === taskId; });
+      if(idx === -1) return;
+      var pt = data.pendingTasks[idx];
+      if(pt.role !== user){
+        alert('אפשר לדחות רק משימות שלך');
+        return;
+      }
+      data.pendingTasks.splice(idx,1);
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: pt.role,
+        action: 'task_rejected',
+        amount: safeNumber(pt.stars),
+        note: pt.taskName,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert('המשימה נדחתה');
+      parent(user);
+    }
+
+    async function loadPendingApprovals(role){
+      var ids = role === 'father' ? ['meir','lavi'] : role === 'mother' ? ['meir','lavi','itai','noya'] : ['meir','lavi'];
+      var parts = [];
+      for(var i=0;i<ids.length;i++){
+        var id = ids[i];
+        var data = await getChildData(id);
+        var pending = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending' && pt.role === role; });
+        pending.forEach(function(pt){
+          parts.push(`
+            <div class="task-line">
+              <div><strong>${childLabel(id)}</strong> • ${pt.taskName} • ${pt.stars} כוכבים<div class="small">${pt.requestedAtText || ''}</div></div>
+              <div>
+                <button class="mini" onclick="approvePendingTask('${id}','${pt.id}')">אשר</button>
+                <button class="danger mini" onclick="rejectPendingTask('${id}','${pt.id}')">דחה</button>
+              </div>
+            </div>
+          `);
+        });
+      }
+      var el = document.getElementById('pendingApprovals');
+      if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות שמחכות לאישור כרגע</div>';
     }
 
     async function loadParentSummary(role){
@@ -1171,7 +1329,7 @@ function nowText(){
           <br>
           <button onclick="addPresetTask('${role}')">שמור משימה</button>
           <div style="margin-top:10px; text-align:right;">${renderTaskManager(role)}</div>
-          <div class="task-btn-wrap" style="margin-top:12px;">${(APP_SETTINGS.presetTasks[role] || []).map(function(task, i){ return `<button class="mini ${role}" onclick="runQuickTask(getSelectedChild(), '${role}', ${i})">${task.name} +${task.stars}</button>`; }).join('') || '<div class="small">אין משימות מוכנות ללחיצה מהירה</div>'}</div>
+          <div class="task-btn-wrap" style="margin-top:12px;">${(APP_SETTINGS.presetTasks[role] || []).map(function(task, i){ return `<button class="mini ${role}" onclick="applyPresetTaskFromParent('${role}', ${i})">${task.name} +${task.stars}</button>`; }).join('') || '<div class="small">אין משימות מוכנות ללחיצה מהירה</div>'}</div>
         </div>
       `;
     }
@@ -1276,6 +1434,12 @@ function nowText(){
           </div>
 
           ${renderPresetTasksEditor(role)}
+
+          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);">
+            <h3 style="margin-top:0">משימות שמחכות לאישור</h3>
+            <div id="pendingApprovals"><div class="small">טוען משימות...</div></div>
+          </div>
+
           ${renderShopEditor()}
 
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);">
@@ -1293,6 +1457,7 @@ function nowText(){
       `;
 
       loadParentSummary(role);
+      loadPendingApprovals(role);
     }
 
     function togglePasswordsPanel(){
@@ -1326,6 +1491,22 @@ function nowText(){
       CHILD_PASSWORDS[childKey] = newPass;
       await saveAppSettings();
       alert("הסיסמה נשמרה");
+      parent(user);
+    }
+
+    async function applyPresetTaskFromParent(role, taskIndex){
+      var childId = getSelectedChild();
+      var task = (APP_SETTINGS.presetTasks[role] || [])[taskIndex];
+      if(!task) return;
+      var data = await getChildData(childId);
+      if(role === 'father') data.father = safeNumber(data.father) + safeNumber(task.stars);
+      if(role === 'mother') data.mother = safeNumber(data.mother) + safeNumber(task.stars);
+      if(role === 'grandma') data.grandma = safeNumber(data.grandma) + safeNumber(task.stars);
+      var logs = data.logs || [];
+      logs.unshift({ parent: role, action: 'task_approved', amount: safeNumber(task.stars), note: task.name + ' (אישור ישיר מהורה)', createdAtText: nowText(), createdAtMillis: Date.now() });
+      data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert('המשימה נוספה ישירות');
       parent(user);
     }
 
@@ -1570,4 +1751,4 @@ function nowText(){
       }
     })();
   </script></body>
-  </html>
+</html>
