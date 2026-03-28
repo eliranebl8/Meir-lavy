@@ -84,6 +84,48 @@
       margin: 10px auto 12px;
       box-shadow: 0 12px 24px rgba(0,0,0,.10);
     }
+    .welcome-stage {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg,#fffaf0,#ffe4e6);
+      border: 2px dashed #f9a8d4;
+    }
+    .welcome-title {
+      font-size: 34px;
+      font-weight: 900;
+      color: #be185d;
+      margin: 8px 0;
+      animation: popIn .6s ease;
+    }
+    .welcome-sub {
+      color: #6b7280;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
+    .floating-icons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .floating-icons span {
+      font-size: 28px;
+      animation: floaty 2.2s ease-in-out infinite;
+    }
+    .floating-icons span:nth-child(2){ animation-delay:.15s; }
+    .floating-icons span:nth-child(3){ animation-delay:.3s; }
+    .floating-icons span:nth-child(4){ animation-delay:.45s; }
+    .floating-icons span:nth-child(5){ animation-delay:.6s; }
+    .welcome-pill {
+      display: inline-block;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.85);
+      box-shadow: 0 8px 18px rgba(251,113,133,.12);
+      font-weight: bold;
+      margin-top: 8px;
+    }
     .kid-card {
       max-width: 860px;
       margin: 0 auto;
@@ -505,14 +547,31 @@
     }
 
     function childLogin(id){
+      var messages = [
+        `שלום ${childLabel(id)} 🌟`,
+        `איזה כיף שחזרת ${childLabel(id)} 🎉`,
+        `${childLabel(id)}, מוכן לראות כמה כוכבים קיבלת? ⭐`,
+        `ברוך הבא ${childLabel(id)} ✨`
+      ];
+      var message = messages[Math.floor(Math.random() * messages.length)];
+      var extraIcons = id === "noya" ? "🦋 🌈 💖 ⭐ ✨" : id === "itai" ? "🐻 🚀 ⭐ 🎈 ✨" : id === "meir" ? "🦁 ⭐🏆 🎉 ✨" : "🐯 🌟 🎈 ⭐ 💫";
+
       document.getElementById("app").innerHTML = `
-        <div class="card">
-          <h2>${childEmoji(id)} ${childLabel(id)}</h2>
-          <input id="childPass" type="password" placeholder="הסיסמה שלך">
-          <br>
-          <button onclick="checkChildLogin('${id}')">כניסה</button>
-          <br><br>
-          <button class="secondary" onclick="home()">חזרה</button>
+        <div class="card welcome-stage app-shimmer">
+          <div class="badge floaty">${childEmoji(id)}</div>
+          <div class="welcome-title">${message}</div>
+          <div class="welcome-sub">הכנס את הסיסמה שלך וניכנס לעולם הכוכבים</div>
+          <div class="welcome-pill">יש הפתעות, יעדים ופרסים שמחכים לך 🎁</div>
+          <div class="floating-icons">
+            ${extraIcons.split(' ').map(icon => `<span>${icon}</span>`).join('')}
+          </div>
+          <div style="margin-top:18px;">
+            <input id="childPass" type="password" placeholder="הסיסמה שלך">
+            <br>
+            <button onclick="checkChildLogin('${id}')">כניסה</button>
+            <br><br>
+            <button class="secondary" onclick="${(id === 'itai' || id === 'noya') ? 'showMoreKids()' : 'home()'}">חזרה</button>
+          </div>
         </div>
       `;
     }
@@ -961,8 +1020,8 @@
 
     async function changePassword(){
       var newPass = document.getElementById("newPass").value;
-      if(!newPass || newPass.length < 4){
-        alert("הסיסמה חייבת להיות לפחות 4 תווים");
+      if(newPass === ""){
+        alert("הסיסמה לא יכולה להיות ריקה");
         return;
       }
 
@@ -974,8 +1033,8 @@
 
     async function changeOwnChildPassword(child){
       var newPass = document.getElementById("kidNewPass").value;
-      if(!newPass || newPass.length < 4){
-        alert("סיסמת ילד חייבת להיות לפחות 4 תווים");
+      if(newPass === ""){
+        alert("הסיסמה לא יכולה להיות ריקה");
         return;
       }
 
