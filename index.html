@@ -457,6 +457,7 @@
     });
 
     var db = firebase.firestore();
+    var firebaseDeleteField = firebase.firestore.FieldValue.delete();
 
     var DEFAULT_PASSWORDS = { father:"1111", mother:"2222", grandma:"3333" };
     var DEFAULT_CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
@@ -465,7 +466,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "2.2.1";
+    var APP_VERSION = "2.2.2";
     var APP_SETTINGS = {
       presetTasks: {},
       sharedShop: []
@@ -487,28 +488,6 @@
 
       var childKeys = ['meir','lavi','itai','noya'];
       var roleKeys = ['father','mother','grandma'];
-
-      // old format migration: { father:[], mother:[], grandma:[] }
-      var looksOld = roleKeys.some(function(role){
-        return Array.isArray(raw[role]);
-      });
-
-      if(looksOld){
-        if(Array.isArray(raw.father)){
-          base.meir.father = raw.father.slice(0,3);
-          base.lavi.father = raw.father.slice(0,3);
-        }
-        if(Array.isArray(raw.mother)){
-          childKeys.forEach(function(childId){
-            base[childId].mother = raw.mother.slice(0,3);
-          });
-        }
-        if(Array.isArray(raw.grandma)){
-          base.meir.grandma = raw.grandma.slice(0,3);
-          base.lavi.grandma = raw.grandma.slice(0,3);
-        }
-        return base;
-      }
 
       childKeys.forEach(function(childId){
         var childObj = raw[childId] || {};
@@ -725,6 +704,22 @@
         childPasswords: CHILD_PASSWORDS,
         presetTasks: APP_SETTINGS.presetTasks,
         sharedShop: APP_SETTINGS.sharedShop
+      }, { merge:true });
+    }
+
+    async function replacePresetTasksInDb(newPresetTasks){
+      await db.collection("settings").doc("app").set({
+        passwords: PASSWORDS,
+        childPasswords: CHILD_PASSWORDS,
+        sharedShop: APP_SETTINGS.sharedShop,
+        presetTasks: firebaseDeleteField
+      }, { merge:true });
+
+      await db.collection("settings").doc("app").set({
+        passwords: PASSWORDS,
+        childPasswords: CHILD_PASSWORDS,
+        sharedShop: APP_SETTINGS.sharedShop,
+        presetTasks: newPresetTasks
       }, { merge:true });
     }
 
@@ -1906,7 +1901,7 @@
       if(!ok) return;
 
       APP_SETTINGS.presetTasks = createEmptyPresetTasks();
-      await saveAppSettings();
+      await replacePresetTasksInDb(APP_SETTINGS.presetTasks);
 
       var children = ["meir","lavi","itai","noya"];
       for(var i = 0; i < children.length; i++){
@@ -1924,6 +1919,8 @@
         data.logs = logs.slice(0,100);
         await saveChildData(childId, data);
       }
+
+      await saveAppSettings();
 
       alert("כל המשימות אופסו מהמסד נתונים");
       parent(user);
@@ -1980,6 +1977,7 @@
       PASSWORDS = { father: DEFAULT_PASSWORDS.father, mother: DEFAULT_PASSWORDS.mother, grandma: DEFAULT_PASSWORDS.grandma };
       CHILD_PASSWORDS = { meir: DEFAULT_CHILD_PASSWORDS.meir, lavi: DEFAULT_CHILD_PASSWORDS.lavi, itai: DEFAULT_CHILD_PASSWORDS.itai, noya: DEFAULT_CHILD_PASSWORDS.noya };
       APP_SETTINGS = { presetTasks: createEmptyPresetTasks(), sharedShop: [] };
+      await replacePresetTasksInDb(APP_SETTINGS.presetTasks);
       await saveAppSettings();
       alert("המערכת אופסה בהצלחה");
       home();
@@ -1994,4 +1992,4 @@
       }
     })();
   </script></body>
-</html>
+  </html>
