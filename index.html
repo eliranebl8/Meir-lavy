@@ -333,6 +333,17 @@
       0% { right: -120%; }
       100% { right: 180%; }
     }
+    @keyframes spinStar {
+      0% { transform: rotate(0deg) scale(0.9); }
+      50% { transform: rotate(180deg) scale(1.08); }
+      100% { transform: rotate(360deg) scale(0.9); }
+    }
+    @keyframes fadeRise {
+      0% { opacity: 0; transform: translateY(18px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+      100% { right: 180%; }
+    }
       100% { right: 160%; }
     }
 
@@ -358,7 +369,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "1.1";
+    var APP_VERSION = "1.2";
 
     function safeNumber(v){ return Number(v || 0); }
     function parentLabel(role){
@@ -504,6 +515,27 @@
           </div>
         </div>
       `;
+    }
+
+    function showSplash(){
+      document.getElementById("app").innerHTML = `
+        <div class="hero">
+          <div class="card app-shimmer" style="min-height:340px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);">
+            <div style="font-size:88px; animation:spinStar 2.8s linear infinite; filter:drop-shadow(0 8px 18px rgba(251,191,36,.35));">⭐</div>
+            <div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px; animation:fadeRise .7s ease both;">אפליקציית הכוכבים</div>
+            <div style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px; animation:fadeRise .7s ease .2s both;">של מאיר ולביא</div>
+            <div style="margin-top:14px; color:#6b7280; font-size:15px; animation:fadeRise .7s ease .4s both;">כוכבים, פרסים, יעדים וחיוכים ✨</div>
+            <div style="display:flex; gap:10px; margin-top:18px; font-size:28px; animation:fadeRise .7s ease .6s both;">
+              <span>🦁</span><span>🐯</span><span>⭐</span><span>🎁</span>
+            </div>
+            <div style="margin-top:18px; font-size:13px; color:#94a3b8;">גרסה ${APP_VERSION}</div>
+          </div>
+        </div>
+      `;
+
+      setTimeout(function(){
+        home();
+      }, 4200);
     }
 
     function showMoreKids(){
@@ -1109,7 +1141,7 @@
     (async function start(){
       try {
         await ensureSettings();
-        home();
+        showSplash();
       } catch (e) {
         document.getElementById("app").innerHTML = `<div class="card">שגיאה: ${(e && e.message) ? e.message : e}</div>`;
       }
