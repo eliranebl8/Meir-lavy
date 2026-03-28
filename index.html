@@ -390,7 +390,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "1.5";
+    var APP_VERSION = "1.6";
 
     function safeNumber(v){ return Number(v || 0); }
     function parentLabel(role){
@@ -876,14 +876,14 @@
         passwordsBlock = `
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);">
             <h3 style="margin-top:0">הסיסמאות של כולם</h3>
-            <div class="row" style="grid-template-columns:repeat(2,1fr); gap:10px;">
-              <div class="summary-card"><strong>אבא</strong><div style="margin-top:6px">${PASSWORDS.father}</div></div>
-              <div class="summary-card"><strong>אמא</strong><div style="margin-top:6px">${PASSWORDS.mother}</div></div>
-              <div class="summary-card"><strong>סבתא שמחה</strong><div style="margin-top:6px">${PASSWORDS.grandma}</div></div>
-              <div class="summary-card"><strong>מאיר</strong><div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div></div>
-              <div class="summary-card"><strong>לביא</strong><div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div></div>
-              <div class="summary-card"><strong>איתי</strong><div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div></div>
-              <div class="summary-card"><strong>נויה</strong><div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div></div>
+            <div style="max-height:340px; overflow:auto; border:1px solid #e5e7eb; border-radius:18px; padding:10px; background:#fff;">
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אבא</strong><div style="margin-top:6px">${PASSWORDS.father}</div></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אמא</strong><div style="margin-top:6px">${PASSWORDS.mother}</div></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>סבתא שמחה</strong><div style="margin-top:6px">${PASSWORDS.grandma}</div></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>מאיר</strong><div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>לביא</strong><div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>איתי</strong><div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none;"><strong>נויה</strong><div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div></div>
             </div>
           </div>
         `;
@@ -927,24 +927,22 @@
             <div>${childRadioOptions}</div>
           </div>
 
-          <div class="row" style="grid-template-columns:repeat(2,1fr); align-items:start;">
-            <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);">
-              <h3 style="margin-top:0">ניהול כוכבים</h3>
-              <input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;">
-              <input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;">
-              <br>
-              <button onclick="addStars()">הוסף</button>
-              <button onclick="removeStars()">הסר</button>
-            </div>
+          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);">
+            <h3 style="margin-top:0">ניהול כוכבים</h3>
+            <input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;">
+            <input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;">
+            <br>
+            <button onclick="addStars()">הוסף</button>
+            <button onclick="removeStars()">הסר</button>
+          </div>
 
-            <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);">
-              <h3 style="margin-top:0">הגדרת יעד ופרס</h3>
-              <input id="target" type="number" placeholder="יעד" style="width:90%;">
-              <input id="reward" placeholder="מתנה" style="width:90%;">
-              <br>
-              <button onclick="saveTarget()">שמור יעד</button>
-              <button onclick="redeem()">מימוש פרס</button>
-            </div>
+          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);">
+            <h3 style="margin-top:0">הגדרת יעד ופרס</h3>
+            <input id="target" type="number" placeholder="יעד" style="width:90%;">
+            <input id="reward" placeholder="מתנה" style="width:90%;">
+            <br>
+            <button onclick="saveTarget()">שמור יעד</button>
+            <button onclick="redeem()">מימוש פרס</button>
           </div>
 
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);">
