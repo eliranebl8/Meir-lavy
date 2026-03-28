@@ -358,6 +358,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
+    var APP_VERSION = "1.1";
 
     function safeNumber(v){ return Number(v || 0); }
     function parentLabel(role){
@@ -496,6 +497,9 @@
               <button class="father" onclick="login('father')">כניסת אבא</button>
               <button class="mother" onclick="login('mother')">כניסת אמא</button>
               <button class="grandma" onclick="login('grandma')">כניסת סבתא שמחה</button>
+            </div>
+            <div style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95;">
+              גרסה ${APP_VERSION}
             </div>
           </div>
         </div>
