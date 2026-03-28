@@ -465,7 +465,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "2.2.0";
+    var APP_VERSION = "2.2.1";
     var APP_SETTINGS = {
       presetTasks: {},
       sharedShop: []
@@ -1560,6 +1560,8 @@
             <h3 style="margin-top:0">ניהול מתקדם</h3>
             <button onclick="clearChildLogs()">נקה לוגים של הילד שנבחר</button>
             <button class="danger" onclick="clearAllLogs()">נקה את כל הלוגים</button>
+            <button class="danger" onclick="resetAllTasksAndPending()">איפוס משימות לכולם</button>
+            <button class="danger" onclick="resetSharedShopAndPending()">איפוס מתנות לכולם</button>
             <button class="danger" onclick="resetAll()">איפוס מלא ⚠️</button>
           </div>
         `;
@@ -1895,6 +1897,63 @@
         await saveChildData(childId, data);
       }
       alert("כל הלוגים נוקו");
+      parent(user);
+    }
+
+
+    async function resetAllTasksAndPending(){
+      var ok = confirm("לאפס את כל המשימות המוכנות והמשימות שממתינות לבדיקה לכל הילדים?");
+      if(!ok) return;
+
+      APP_SETTINGS.presetTasks = createEmptyPresetTasks();
+      await saveAppSettings();
+
+      var children = ["meir","lavi","itai","noya"];
+      for(var i = 0; i < children.length; i++){
+        var childId = children[i];
+        var data = await getChildData(childId);
+        data.pendingTasks = [];
+        var logs = data.logs || [];
+        logs.unshift({
+          parent: "father",
+          action: "clearalllogs",
+          note: "בוצע איפוס משימות ממתינות ומשימות מוכנות לכולם",
+          createdAtText: nowText(),
+          createdAtMillis: Date.now()
+        });
+        data.logs = logs.slice(0,100);
+        await saveChildData(childId, data);
+      }
+
+      alert("כל המשימות אופסו מהמסד נתונים");
+      parent(user);
+    }
+
+    async function resetSharedShopAndPending(){
+      var ok = confirm("לאפס את כל המתנות בחנות ואת כל בקשות המימוש שמחכות לאישור?");
+      if(!ok) return;
+
+      APP_SETTINGS.sharedShop = [];
+      await saveAppSettings();
+
+      var children = ["meir","lavi","itai","noya"];
+      for(var i = 0; i < children.length; i++){
+        var childId = children[i];
+        var data = await getChildData(childId);
+        data.pendingShopRequests = [];
+        var logs = data.logs || [];
+        logs.unshift({
+          parent: "father",
+          action: "clearalllogs",
+          note: "בוצע איפוס חנות מתנות ובקשות מימוש לכולם",
+          createdAtText: nowText(),
+          createdAtMillis: Date.now()
+        });
+        data.logs = logs.slice(0,100);
+        await saveChildData(childId, data);
+      }
+
+      alert("כל המתנות אופסו מהמסד נתונים");
       parent(user);
     }
 
