@@ -49,6 +49,12 @@
     button.mother { background: #ec4899; }
     button.grandma { background: #8b5cf6; }
     button.danger { background: #dc2626; }
+    button.shop { background: #059669; }
+    button.mini {
+      padding: 8px 10px;
+      font-size: 13px;
+      border-radius: 10px;
+    }
 
     input, select {
       padding: 10px 12px;
@@ -71,6 +77,7 @@
     .bar-f { height: 100%; background: linear-gradient(90deg, #60a5fa, #2563eb); }
     .bar-m { height: 100%; background: linear-gradient(90deg, #f472b6, #db2777); }
     .bar-g { height: 100%; background: linear-gradient(90deg, #a78bfa, #7c3aed); }
+    .bar-total { height: 100%; background: linear-gradient(90deg, #f59e0b, #ef4444); }
 
     .big { font-size: 28px; font-weight: bold; }
     .small { font-size: 13px; color: #666; }
@@ -158,6 +165,7 @@
     .stat.f { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
     .stat.m { background: linear-gradient(135deg, #fdf2f8, #fce7f3); }
     .stat.g { background: linear-gradient(135deg, #f5f3ff, #ede9fe); }
+    .stat.total { background: linear-gradient(135deg, #fff7ed, #ffedd5); }
 
     .summary-card {
       background: linear-gradient(180deg,#ffffff,#faf5ff);
@@ -168,9 +176,9 @@
       box-shadow: 0 10px 22px rgba(124,58,237,.10);
       position: relative;
       overflow: hidden;
-      min-width: 280px;
-      max-width: 280px;
-      flex: 0 0 280px;
+      min-width: 300px;
+      max-width: 300px;
+      flex: 0 0 300px;
       scroll-snap-align: start;
     }
     .summary-card:after {
@@ -217,6 +225,7 @@
     .goal.f { background: linear-gradient(135deg, #eff6ff, #bfdbfe); }
     .goal.m { background: linear-gradient(135deg, #fdf2f8, #fbcfe8); }
     .goal.g { background: linear-gradient(135deg, #f5f3ff, #ddd6fe); }
+    .goal.total { background: linear-gradient(135deg, #fff7ed, #fed7aa); }
 
     .reward {
       display: inline-block;
@@ -244,6 +253,7 @@
     }
     .tip.mother { background: #fdf2f8; color: #be185d; }
     .tip.grandma { background: #f5f3ff; color: #6d28d9; }
+    .tip.total { background: #fff7ed; color: #b45309; }
 
     .actions { margin-top: 14px; }
     hr {
@@ -318,6 +328,34 @@
       animation: shineMove 2.4s ease-in-out infinite;
     }
 
+    .task-line, .shop-line {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin: 8px 0;
+      flex-wrap: wrap;
+      padding: 10px;
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid #ececec;
+    }
+    .task-btn-wrap {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 10px;
+    }
+    .level-chip {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: linear-gradient(135deg,#fde68a,#fca5a5);
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
     @keyframes floaty {
       0%,100% { transform: translateY(0); }
       50% { transform: translateY(-6px); }
@@ -371,6 +409,7 @@
     @media (max-width: 640px) {
       .row { grid-template-columns: 1fr; }
       .kid-title { font-size: 28px; }
+      .task-line, .shop-line { justify-content: center; }
     }
   </style></head>
 <body>
@@ -390,15 +429,21 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "1.7";
+    var APP_VERSION = "2.0.2";
+    var APP_SETTINGS = {
+      presetTasks: { father: [], mother: [], grandma: [] },
+      sharedShop: []
+    };
 
     function safeNumber(v){ return Number(v || 0); }
+
     function parentLabel(role){
       if(role === "father") return "אבא";
       if(role === "mother") return "אמא";
       if(role === "grandma") return "סבתא שמחה";
       return role;
     }
+
     function childLabel(id){
       if(id === "meir") return "מאיר";
       if(id === "lavi") return "לביא";
@@ -406,6 +451,7 @@
       if(id === "noya") return "נויה";
       return id;
     }
+
     function childEmoji(id){
       if(id === "meir") return "🦁";
       if(id === "lavi") return "🐯";
@@ -413,6 +459,7 @@
       if(id === "noya") return "🦋";
       return "⭐";
     }
+
     function actionLabel(action){
       if(action === "add") return "קיבל";
       if(action === "remove") return "ירד";
@@ -422,8 +469,23 @@
       if(action === "clearlogs") return "ניקוי לוגים";
       if(action === "clearalllogs") return "ניקוי כל הלוגים";
       if(action === "reset") return "איפוס מלא";
+      if(action === "shop_buy") return "קנה מהחנות";
+      if(action === "task_quick") return "משימה מוכנה";
       return "עדכון";
     }
+
+    function funnyWrongPassword(){
+      var messages = [
+        "אופס 😅 זאת לא הסיסמה שלך",
+        "כמעט! נסה שוב 😜",
+        "לא הפעם 🤭",
+        "עוד ניסיון קטן ותצליח 💪",
+        "זה לא זה, אבל אהבתי את הביטחון 😄"
+      ];
+      return messages[Math.floor(Math.random() * messages.length)];
+    }
+
+    
     function encouragementText(current, target, who){
       var percent = Math.round((current / Math.max(1, target)) * 100);
       if(current >= target) return "אלוף! הגעת ליעד של " + who + " 🎉";
@@ -433,19 +495,64 @@
       if(percent >= 25) return "איזה יופי, אתה מתקדם נהדר מול " + who + " 🌟";
       return "התחלה מצוינת, ממשיכים לאסוף כוכבים מול " + who + " ✨";
     }
-    function nowText(){
+
+function nowText(){
       return new Intl.DateTimeFormat("he-IL", { dateStyle:"short", timeStyle:"short" }).format(new Date());
     }
+
+    function getAllowedRolesForChild(id){
+      if(id === "itai" || id === "noya") return ["mother"];
+      return ["father", "mother", "grandma"];
+    }
+
+    function getCurrentTotal(data, id){
+      if(id === "itai" || id === "noya") return safeNumber(data.mother);
+      return safeNumber(data.father) + safeNumber(data.mother) + safeNumber(data.grandma);
+    }
+
+    function getCurrentTargetTotal(data, id){
+      if(id === "itai" || id === "noya") return safeNumber(data.targetMother) || 100;
+      return (safeNumber(data.targetFather) || 100) + (safeNumber(data.targetMother) || 100) + (safeNumber(data.targetGrandma) || 100);
+    }
+
+    function calcOverallPercent(data, id){
+      var total = getCurrentTotal(data, id);
+      var target = getCurrentTargetTotal(data, id);
+      return Math.min(100, Math.round((total / Math.max(1, target)) * 100));
+    }
+
+    function calcLevel(data, id){
+      var percent = calcOverallPercent(data, id);
+      if(percent < 25) return "מתחיל 🟢";
+      if(percent < 50) return "מתקדם 🔵";
+      if(percent < 75) return "אלוף 🟣";
+      return "כוכב על 👑";
+    }
+
+    function buildLevelMessage(data, id){
+      var percent = calcOverallPercent(data, id);
+      var target = getCurrentTargetTotal(data, id);
+      var total = getCurrentTotal(data, id);
+      var left = Math.max(0, target - total);
+      if(percent >= 90) return "וואו! אתה ממש רגע מדרגה הבאה 🚀";
+      if(percent >= 75) return "עוד קצת ואתה כוכב על 👑";
+      if(percent >= 50) return "אתה מתקדם מעולה 💪";
+      if(percent >= 25) return "כל הכבוד, כבר התחלת לטפס 🌟";
+      return left > 0 ? "יאללה, חסרים עוד " + left + " כוכבים ליעד הגדול ✨" : "בוא נתחיל לצבור כוכבים ✨";
+    }
+
     function getParentColorClass(role){
       if(role === "father") return "f";
       if(role === "mother") return "m";
       return "g";
     }
+
     function getParentBarClass(role){
       if(role === "father") return "bar-f";
       if(role === "mother") return "bar-m";
       return "bar-g";
     }
+
     function getParentTipClass(role){
       if(role === "father") return "tip";
       if(role === "mother") return "tip mother";
@@ -468,8 +575,17 @@
           itai: DEFAULT_CHILD_PASSWORDS.itai,
           noya: DEFAULT_CHILD_PASSWORDS.noya
         };
+        APP_SETTINGS = {
+          presetTasks: { father: [], mother: [], grandma: [] },
+          sharedShop: []
+        };
 
-        await ref.set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS });
+        await ref.set({
+          passwords: PASSWORDS,
+          childPasswords: CHILD_PASSWORDS,
+          presetTasks: APP_SETTINGS.presetTasks,
+          sharedShop: APP_SETTINGS.sharedShop
+        });
       } else {
         var data = snap.data() || {};
         var savedPasswords = data.passwords || {};
@@ -487,8 +603,31 @@
           noya: savedChildPasswords.noya || DEFAULT_CHILD_PASSWORDS.noya
         };
 
-        await ref.set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+        APP_SETTINGS = {
+          presetTasks: {
+            father: Array.isArray(data.presetTasks?.father) ? data.presetTasks.father.slice(0,3) : [],
+            mother: Array.isArray(data.presetTasks?.mother) ? data.presetTasks.mother.slice(0,3) : [],
+            grandma: Array.isArray(data.presetTasks?.grandma) ? data.presetTasks.grandma.slice(0,3) : []
+          },
+          sharedShop: Array.isArray(data.sharedShop) ? data.sharedShop : []
+        };
+
+        await ref.set({
+          passwords: PASSWORDS,
+          childPasswords: CHILD_PASSWORDS,
+          presetTasks: APP_SETTINGS.presetTasks,
+          sharedShop: APP_SETTINGS.sharedShop
+        }, { merge:true });
       }
+    }
+
+    async function saveAppSettings(){
+      await db.collection("settings").doc("app").set({
+        passwords: PASSWORDS,
+        childPasswords: CHILD_PASSWORDS,
+        presetTasks: APP_SETTINGS.presetTasks,
+        sharedShop: APP_SETTINGS.sharedShop
+      }, { merge:true });
     }
 
     async function getChildData(id){
@@ -505,6 +644,10 @@
         rewardGrandma: "",
         logs: []
       };
+    }
+
+    async function saveChildData(id, data){
+      await db.collection("children").doc(id).set(data, { merge:true });
     }
 
     function home(){
@@ -615,7 +758,7 @@
         return;
       }
       if(pass !== PASSWORDS[role]){
-        alert("סיסמה שגויה");
+        alert(funnyWrongPassword());
         return;
       }
       parent(role);
@@ -659,7 +802,7 @@
     function checkChildLogin(id){
       var pass = document.getElementById("childPass").value;
       if(pass !== CHILD_PASSWORDS[id]){
-        alert("סיסמה שגויה");
+        alert(funnyWrongPassword());
         return;
       }
       child(id);
@@ -685,9 +828,9 @@
 
     function buildGoalCard(title, current, target, reward, roleKey){
       var percent = Math.min(100, (current / Math.max(1, target)) * 100);
-      var colorClass = getParentColorClass(roleKey);
-      var barClass = getParentBarClass(roleKey);
-      var tipClass = getParentTipClass(roleKey);
+      var colorClass = roleKey === "total" ? "total" : getParentColorClass(roleKey);
+      var barClass = roleKey === "total" ? "bar-total" : getParentBarClass(roleKey);
+      var tipClass = roleKey === "total" ? "tip total" : getParentTipClass(roleKey);
       return `
         <div class="goal ${colorClass} ${percent >= 90 && current < target ? 'pulse-close' : ''}">
           <div class="big" style="font-size:22px">🎯 ${title}</div>
@@ -700,6 +843,64 @@
       `;
     }
 
+    function renderShopForChild(id){
+      if(!APP_SETTINGS.sharedShop.length){
+        return '<div class="small">החנות עדיין ריקה</div>';
+      }
+
+      return APP_SETTINGS.sharedShop.map(function(item, index){
+        return `
+          <div class="shop-line">
+            <div><strong>${item.name}</strong> • ${item.price} כוכבים</div>
+            <button class="shop mini" onclick="buyFromShop('${id}', ${index})">ממש</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderQuickTaskButtons(id){
+      var roles = getAllowedRolesForChild(id);
+      var html = [];
+      roles.forEach(function(role){
+        var tasks = APP_SETTINGS.presetTasks[role] || [];
+        tasks.forEach(function(task, index){
+          html.push(`<button class="mini ${role}" onclick="runQuickTask('${id}', '${role}', ${index})">${task.name} +${task.stars}</button>`);
+        });
+      });
+      return html.length ? html.join('') : '<div class="small">אין משימות מוכנות עדיין</div>';
+    }
+
+    function renderShopManager(){
+      if(!APP_SETTINGS.sharedShop.length){
+        return '<div class="small">אין פרסים בחנות עדיין</div>';
+      }
+
+      return APP_SETTINGS.sharedShop.map(function(item, index){
+        return `
+          <div class="shop-line">
+            <div><strong>${item.name}</strong> • ${item.price} כוכבים</div>
+            <button class="danger mini" onclick="removeShopItem(${index})">מחק</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTaskManager(role){
+      var tasks = APP_SETTINGS.presetTasks[role] || [];
+      if(!tasks.length){
+        return '<div class="small">אין משימות מוכנות עדיין</div>';
+      }
+
+      return tasks.map(function(task, index){
+        return `
+          <div class="task-line">
+            <div><strong>${task.name}</strong> • ${task.stars} כוכבים</div>
+            <button class="danger mini" onclick="removePresetTask('${role}', ${index})">מחק</button>
+          </div>
+        `;
+      }).join('');
+    }
+
     async function child(id){
       var data = await getChildData(id);
       var father = safeNumber(data.father);
@@ -708,6 +909,10 @@
       var targetFather = safeNumber(data.targetFather) || 100;
       var targetMother = safeNumber(data.targetMother) || 100;
       var targetGrandma = safeNumber(data.targetGrandma) || 100;
+      var totalCurrent = getCurrentTotal(data, id);
+      var totalTarget = getCurrentTargetTotal(data, id);
+      var totalLevel = calcLevel(data, id);
+      var totalPercent = calcOverallPercent(data, id);
       var logs = data.logs || [];
       var latest = logs.length ? logs[0] : null;
       var showBurst = latest && latest.action === "add";
@@ -750,8 +955,15 @@
         `;
       }
 
-      var statsHtml = "";
-      var goalsHtml = "";
+      var statsHtml = `
+        <div class="stat total">
+          <div>כל הכוכבים</div>
+          <div class="big">${totalCurrent}</div>
+          <div class="small">${totalPercent}% מהיעד הכולל</div>
+          <div class="level-chip">${totalLevel}</div>
+        </div>
+      `;
+      var goalsHtml = buildGoalCard("היעד הכולל שלך", totalCurrent, totalTarget, "כל הפרסים בדרך", "total");
 
       if(!isMotherOnly){
         statsHtml += `
@@ -786,12 +998,22 @@
           <div class="badge floaty" style="box-shadow:0 16px 28px rgba(251,113,133,.22), 0 0 0 8px rgba(255,255,255,.65);">${childEmoji(id)}</div>
           <div style="font-size:22px; margin-bottom:4px;">🌈 ✨ 🎈</div>
           <h2 class="kid-title" style="color:#be185d; text-shadow:0 2px 0 rgba(255,255,255,.9);">${childLabel(id)}</h2>
-          <div class="kid-sub" style="font-size:15px;">ברוך הבא למסך הכוכבים שלך ⭐ כל כוכב מקרב אותך לפרס הבא!</div>
+          <div class="kid-sub" style="font-size:15px;">${buildLevelMessage(data, id)}</div>
 
           ${burstHtml}
 
           <div class="row three">${statsHtml}</div>
           ${goalsHtml}
+
+          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac; border-radius:24px;">
+            <h3 style="margin-top:0">⚡ משימות מוכנות</h3>
+            <div class="task-btn-wrap">${renderQuickTaskButtons(id)}</div>
+          </div>
+
+          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; border-radius:24px; text-align:right;">
+            <h3 style="margin-top:0">🛒 חנות הפרסים</h3>
+            ${renderShopForChild(id)}
+          </div>
 
           <div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d; border-radius:24px;">
             <h3 style="margin-top:0">📝 על מה קיבלת כוכבים</h3>
@@ -816,6 +1038,78 @@
       `;
     }
 
+    async function buyFromShop(id, itemIndex){
+      var item = APP_SETTINGS.sharedShop[itemIndex];
+      if(!item) return;
+
+      var data = await getChildData(id);
+      var total = getCurrentTotal(data, id);
+      if(total < safeNumber(item.price)){
+        alert("אין מספיק כוכבים בשביל הפרס הזה 😅");
+        return;
+      }
+
+      var price = safeNumber(item.price);
+      if(id === "itai" || id === "noya"){
+        data.mother = Math.max(0, safeNumber(data.mother) - price);
+      } else {
+        var pools = [
+          { key: 'father', value: safeNumber(data.father) },
+          { key: 'mother', value: safeNumber(data.mother) },
+          { key: 'grandma', value: safeNumber(data.grandma) }
+        ];
+        pools.sort(function(a,b){ return b.value - a.value; });
+        var left = price;
+        pools.forEach(function(pool){
+          if(left <= 0) return;
+          var take = Math.min(pool.value, left);
+          data[pool.key] = Math.max(0, safeNumber(data[pool.key]) - take);
+          left -= take;
+        });
+      }
+
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: 'mother',
+        action: 'shop_buy',
+        amount: price,
+        note: 'נרכש מהחנות: ' + item.name,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+
+      await saveChildData(id, data);
+      alert('איזה כיף! בחרת: ' + item.name + ' 🎁');
+      child(id);
+    }
+
+    async function runQuickTask(childId, role, taskIndex){
+      var task = (APP_SETTINGS.presetTasks[role] || [])[taskIndex];
+      if(!task) return;
+
+      var originalUser = user;
+      var data = await getChildData(childId);
+      if(role === 'father') data.father = safeNumber(data.father) + safeNumber(task.stars);
+      if(role === 'mother') data.mother = safeNumber(data.mother) + safeNumber(task.stars);
+      if(role === 'grandma') data.grandma = safeNumber(data.grandma) + safeNumber(task.stars);
+
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: role,
+        action: 'task_quick',
+        amount: safeNumber(task.stars),
+        note: task.name,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+
+      await saveChildData(childId, data);
+      user = originalUser;
+      child(childId);
+    }
+
     async function loadParentSummary(role){
       var ids = role === "father" ? ["meir","lavi"] : role === "mother" ? ["meir","lavi","itai","noya"] : ["meir","lavi"];
       var html = "";
@@ -823,6 +1117,9 @@
       for(var i = 0; i < ids.length; i++){
         var id = ids[i];
         var data = await getChildData(id);
+        var total = getCurrentTotal(data, id);
+        var target = getCurrentTargetTotal(data, id);
+        var level = calcLevel(data, id);
         var logs = data.logs || [];
         var logsHtml = "";
 
@@ -847,6 +1144,8 @@
         html += `
           <div class="summary-card">
             <div style="font-size:22px;margin-bottom:8px">${childEmoji(id)} <strong>${childLabel(id)}</strong></div>
+            <div><strong>סה״כ:</strong> ${total} / יעד ${target}</div>
+            <div class="level-chip">${level}</div>
             ${id !== 'itai' && id !== 'noya' ? `<div><strong>מאבא:</strong> ${safeNumber(data.father)} / יעד ${safeNumber(data.targetFather) || 100}</div>` : ''}
             <div><strong>מאמא:</strong> ${safeNumber(data.mother)} / יעד ${safeNumber(data.targetMother) || 100}</div>
             ${id !== 'itai' && id !== 'noya' ? `<div><strong>מסבתא:</strong> ${safeNumber(data.grandma)} / יעד ${safeNumber(data.targetGrandma) || 100}</div>` : ''}
@@ -860,6 +1159,34 @@
 
       var el = document.getElementById("parentSummary");
       if(el){ el.innerHTML = html; }
+    }
+
+    function renderPresetTasksEditor(role){
+      return `
+        <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f0fdf4);">
+          <h3 style="margin-top:0">משימות מוכנות של ${parentLabel(role)}</h3>
+          <div class="small">אפשר לשמור עד 3 משימות מוכנות</div>
+          <input id="taskName" placeholder="שם המשימה" style="width:90%;">
+          <input id="taskStars" type="number" placeholder="כמה כוכבים" style="width:90%;">
+          <br>
+          <button onclick="addPresetTask('${role}')">שמור משימה</button>
+          <div style="margin-top:10px; text-align:right;">${renderTaskManager(role)}</div>
+          <div class="task-btn-wrap" style="margin-top:12px;">${(APP_SETTINGS.presetTasks[role] || []).map(function(task, i){ return `<button class="mini ${role}" onclick="runQuickTask(getSelectedChild(), '${role}', ${i})">${task.name} +${task.stars}</button>`; }).join('') || '<div class="small">אין משימות מוכנות ללחיצה מהירה</div>'}</div>
+        </div>
+      `;
+    }
+
+    function renderShopEditor(){
+      return `
+        <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#ecfdf5);">
+          <h3 style="margin-top:0">ניהול חנות פרסים משותפת</h3>
+          <input id="shopName" placeholder="שם הפרס" style="width:90%;">
+          <input id="shopPrice" type="number" placeholder="מחיר בכוכבים" style="width:90%;">
+          <br>
+          <button class="shop" onclick="addShopItem()">הוסף פרס</button>
+          <div style="margin-top:10px; text-align:right;">${renderShopManager()}</div>
+        </div>
+      `;
     }
 
     function parent(role){
@@ -880,48 +1207,13 @@
               <button onclick="togglePasswordsPanel()">הצג / הסתר סיסמאות</button>
             </div>
             <div id="passwordsPanel" style="display:none; max-height:380px; overflow:auto; border:1px solid #e5e7eb; border-radius:18px; padding:10px; background:#fff; margin-top:12px;">
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
-                <strong>אבא</strong>
-                <div style="margin-top:6px">${PASSWORDS.father}</div>
-                <input id="passFather" placeholder="סיסמה חדשה לאבא" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificPassword('father','passFather')">שמור סיסמה</button>
-              </div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
-                <strong>אמא</strong>
-                <div style="margin-top:6px">${PASSWORDS.mother}</div>
-                <input id="passMother" placeholder="סיסמה חדשה לאמא" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificPassword('mother','passMother')">שמור סיסמה</button>
-              </div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
-                <strong>סבתא שמחה</strong>
-                <div style="margin-top:6px">${PASSWORDS.grandma}</div>
-                <input id="passGrandma" placeholder="סיסמה חדשה לסבתא" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificPassword('grandma','passGrandma')">שמור סיסמה</button>
-              </div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
-                <strong>מאיר</strong>
-                <div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div>
-                <input id="passMeir" placeholder="סיסמה חדשה למאיר" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificChildPassword('meir','passMeir')">שמור סיסמה</button>
-              </div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
-                <strong>לביא</strong>
-                <div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div>
-                <input id="passLavi" placeholder="סיסמה חדשה ללביא" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificChildPassword('lavi','passLavi')">שמור סיסמה</button>
-              </div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;">
-                <strong>איתי</strong>
-                <div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div>
-                <input id="passItai" placeholder="סיסמה חדשה לאיתי" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificChildPassword('itai','passItai')">שמור סיסמה</button>
-              </div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none;">
-                <strong>נויה</strong>
-                <div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div>
-                <input id="passNoya" placeholder="סיסמה חדשה לנויה" style="width:90%; margin-top:8px;">
-                <button onclick="changeSpecificChildPassword('noya','passNoya')">שמור סיסמה</button>
-              </div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אבא</strong><div style="margin-top:6px">${PASSWORDS.father}</div><input id="passFather" placeholder="סיסמה חדשה לאבא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificPassword('father','passFather')">שמור סיסמה</button></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אמא</strong><div style="margin-top:6px">${PASSWORDS.mother}</div><input id="passMother" placeholder="סיסמה חדשה לאמא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificPassword('mother','passMother')">שמור סיסמה</button></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>סבתא שמחה</strong><div style="margin-top:6px">${PASSWORDS.grandma}</div><input id="passGrandma" placeholder="סיסמה חדשה לסבתא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificPassword('grandma','passGrandma')">שמור סיסמה</button></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>מאיר</strong><div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div><input id="passMeir" placeholder="סיסמה חדשה למאיר" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('meir','passMeir')">שמור סיסמה</button></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>לביא</strong><div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div><input id="passLavi" placeholder="סיסמה חדשה ללביא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('lavi','passLavi')">שמור סיסמה</button></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>איתי</strong><div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div><input id="passItai" placeholder="סיסמה חדשה לאיתי" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('itai','passItai')">שמור סיסמה</button></div>
+              <div class="summary-card" style="min-width:unset; max-width:none; flex:none;"><strong>נויה</strong><div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div><input id="passNoya" placeholder="סיסמה חדשה לנויה" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('noya','passNoya')">שמור סיסמה</button></div>
             </div>
           </div>
         `;
@@ -983,6 +1275,9 @@
             <button onclick="redeem()">מימוש פרס</button>
           </div>
 
+          ${renderPresetTasksEditor(role)}
+          ${renderShopEditor()}
+
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);">
             <h3 style="margin-top:0">שינוי סיסמת משתמש</h3>
             <input id="newPass" type="password" placeholder="סיסמה חדשה">
@@ -1015,7 +1310,7 @@
         return;
       }
       PASSWORDS[roleKey] = newPass;
-      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      await saveAppSettings();
       alert("הסיסמה נשמרה");
       parent(user);
     }
@@ -1029,14 +1324,57 @@
         return;
       }
       CHILD_PASSWORDS[childKey] = newPass;
-      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      await saveAppSettings();
       alert("הסיסמה נשמרה");
+      parent(user);
+    }
+
+    async function addPresetTask(role){
+      var name = document.getElementById('taskName').value.trim();
+      var stars = Number(document.getElementById('taskStars').value);
+      if(!name || !stars || stars < 1){
+        alert('מלא שם משימה וכמות כוכבים תקינה');
+        return;
+      }
+      APP_SETTINGS.presetTasks[role] = APP_SETTINGS.presetTasks[role] || [];
+      if(APP_SETTINGS.presetTasks[role].length >= 3){
+        alert('אפשר לשמור עד 3 משימות מוכנות');
+        return;
+      }
+      APP_SETTINGS.presetTasks[role].push({ name: name, stars: stars });
+      await saveAppSettings();
+      alert('המשימה נשמרה');
+      parent(user);
+    }
+
+    async function removePresetTask(role, index){
+      APP_SETTINGS.presetTasks[role].splice(index, 1);
+      await saveAppSettings();
+      parent(user);
+    }
+
+    async function addShopItem(){
+      var name = document.getElementById('shopName').value.trim();
+      var price = Number(document.getElementById('shopPrice').value);
+      if(!name || !price || price < 1){
+        alert('מלא שם פרס ומחיר תקין');
+        return;
+      }
+      APP_SETTINGS.sharedShop.push({ name: name, price: price });
+      await saveAppSettings();
+      alert('הפרס נוסף לחנות');
+      parent(user);
+    }
+
+    async function removeShopItem(index){
+      APP_SETTINGS.sharedShop.splice(index, 1);
+      await saveAppSettings();
       parent(user);
     }
 
     function getSelectedChild(){
       var selected = document.querySelector('input[name="childChoice"]:checked');
-      return selected ? selected.value : "meir";
+      return selected ? selected.value : 'meir';
     }
 
     async function addStars(){ await change("add"); }
@@ -1071,7 +1409,7 @@
       var logs = data.logs || [];
       logs.unshift({ parent: user, action: type, amount: amount, note: note, createdAtText: nowText(), createdAtMillis: Date.now() });
       data.logs = logs.slice(0,100);
-      await db.collection("children").doc(child).set(data, { merge:true });
+      await saveChildData(child, data);
       alert("עודכן");
       parent(user);
     }
@@ -1108,7 +1446,7 @@
       var logs = data.logs || [];
       logs.unshift({ parent: user, action: "target", note: "יעד: " + target + " | מתנה: " + reward, createdAtText: nowText(), createdAtMillis: Date.now() });
       data.logs = logs.slice(0,100);
-      await db.collection("children").doc(child).set(data, { merge:true });
+      await saveChildData(child, data);
       alert("נשמר");
       parent(user);
     }
@@ -1135,7 +1473,7 @@
       var logs = data.logs || [];
       logs.unshift({ parent: user, action: "redeem", note: "בוצע מימוש פרס ואיפוס המסלול", createdAtText: nowText(), createdAtMillis: Date.now() });
       data.logs = logs.slice(0,100);
-      await db.collection("children").doc(child).set(data, { merge:true });
+      await saveChildData(child, data);
       alert("הפרס מומש והמסלול אופס");
       parent(user);
     }
@@ -1147,7 +1485,7 @@
         return;
       }
       PASSWORDS[user] = newPass;
-      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      await saveAppSettings();
       alert("הסיסמה נשמרה");
       parent(user);
     }
@@ -1165,7 +1503,7 @@
         return;
       }
       CHILD_PASSWORDS[child] = newPass;
-      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      await saveAppSettings();
       alert("הסיסמה החדשה נשמרה");
       childLogin(child);
     }
@@ -1176,7 +1514,7 @@
       if(!ok) return;
       var data = await getChildData(child);
       data.logs = [];
-      await db.collection("children").doc(child).set(data, { merge:true });
+      await saveChildData(child, data);
       alert("הלוגים של " + childLabel(child) + " נוקו");
       parent(user);
     }
@@ -1189,7 +1527,7 @@
         var childId = children[i];
         var data = await getChildData(childId);
         data.logs = [];
-        await db.collection("children").doc(childId).set(data, { merge:true });
+        await saveChildData(childId, data);
       }
       alert("כל הלוגים נוקו");
       parent(user);
@@ -1217,7 +1555,8 @@
 
       PASSWORDS = { father: DEFAULT_PASSWORDS.father, mother: DEFAULT_PASSWORDS.mother, grandma: DEFAULT_PASSWORDS.grandma };
       CHILD_PASSWORDS = { meir: DEFAULT_CHILD_PASSWORDS.meir, lavi: DEFAULT_CHILD_PASSWORDS.lavi, itai: DEFAULT_CHILD_PASSWORDS.itai, noya: DEFAULT_CHILD_PASSWORDS.noya };
-      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
+      APP_SETTINGS = { presetTasks: { father: [], mother: [], grandma: [] }, sharedShop: [] };
+      await saveAppSettings();
       alert("המערכת אופסה בהצלחה");
       home();
     }
@@ -1231,4 +1570,4 @@
       }
     })();
   </script></body>
-</html>
+  </html>
