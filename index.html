@@ -17,7 +17,7 @@
       border-radius: 24px;
       margin: 10px auto;
       box-shadow: 0 14px 34px rgba(0,0,0,.09);
-      max-width: 860px;
+      max-width: 980px;
       backdrop-filter: blur(6px);
       border: 1px solid rgba(255,255,255,.7);
     }
@@ -38,9 +38,7 @@
       transform: translateY(-1px);
       box-shadow: 0 12px 22px rgba(37,99,235,.24);
     }
-    button:active {
-      transform: scale(.98);
-    }
+    button:active { transform: scale(.98); }
     button.secondary {
       background: #fff;
       color: #1f2937;
@@ -51,15 +49,18 @@
     button.mother { background: #ec4899; }
     button.grandma { background: #8b5cf6; }
     button.danger { background: #dc2626; }
+
     input, select {
       padding: 10px 12px;
       border-radius: 12px;
       border: 1px solid #d1d5db;
       margin: 5px;
       font-size: 16px;
-      width: min(260px, 90%);
+      width: min(320px, 92%);
       box-sizing: border-box;
+      background: #fff;
     }
+
     .progress {
       height: 14px;
       background: #e5e7eb;
@@ -70,9 +71,11 @@
     .bar-f { height: 100%; background: linear-gradient(90deg, #60a5fa, #2563eb); }
     .bar-m { height: 100%; background: linear-gradient(90deg, #f472b6, #db2777); }
     .bar-g { height: 100%; background: linear-gradient(90deg, #a78bfa, #7c3aed); }
+
     .big { font-size: 28px; font-weight: bold; }
     .small { font-size: 13px; color: #666; }
     .hero { max-width: 860px; margin: 0 auto 14px; }
+
     .badge {
       width: 90px;
       height: 90px;
@@ -84,6 +87,7 @@
       margin: 10px auto 12px;
       box-shadow: 0 12px 24px rgba(0,0,0,.10);
     }
+
     .welcome-stage {
       position: relative;
       overflow: hidden;
@@ -126,6 +130,7 @@
       font-weight: bold;
       margin-top: 8px;
     }
+
     .kid-card {
       max-width: 860px;
       margin: 0 auto;
@@ -133,6 +138,7 @@
     }
     .kid-title { font-size: 34px; font-weight: 900; margin: 0; }
     .kid-sub { color: #6b7280; margin: 8px 0 0; }
+
     .row {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -152,6 +158,7 @@
     .stat.f { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
     .stat.m { background: linear-gradient(135deg, #fdf2f8, #fce7f3); }
     .stat.g { background: linear-gradient(135deg, #f5f3ff, #ede9fe); }
+
     .summary-card {
       background: linear-gradient(180deg,#ffffff,#faf5ff);
       border-radius: 22px;
@@ -177,6 +184,7 @@
       transform: skewX(-20deg);
       animation: appShine 5.5s ease-in-out infinite;
     }
+
     .logs-box {
       margin-top: 10px;
       max-height: 220px;
@@ -199,6 +207,7 @@
       text-align: center;
       color: #4b5563;
     }
+
     .goal {
       border-radius: 20px;
       padding: 16px;
@@ -208,6 +217,7 @@
     .goal.f { background: linear-gradient(135deg, #eff6ff, #bfdbfe); }
     .goal.m { background: linear-gradient(135deg, #fdf2f8, #fbcfe8); }
     .goal.g { background: linear-gradient(135deg, #f5f3ff, #ddd6fe); }
+
     .reward {
       display: inline-block;
       margin-top: 8px;
@@ -234,12 +244,14 @@
     }
     .tip.mother { background: #fdf2f8; color: #be185d; }
     .tip.grandma { background: #f5f3ff; color: #6d28d9; }
+
     .actions { margin-top: 14px; }
     hr {
       border: none;
       border-top: 1px solid #e5e7eb;
       margin: 18px 0;
     }
+
     .log-item {
       background: #f9fafb;
       border-radius: 14px;
@@ -248,6 +260,7 @@
       text-align: right;
       border: 1px solid #eef2f7;
     }
+
     .app-shimmer {
       position: relative;
       overflow: hidden;
@@ -263,6 +276,7 @@
       transform: skewX(-20deg);
       animation: appShine 4.5s ease-in-out infinite;
     }
+
     .floaty { animation: floaty 2.6s ease-in-out infinite; }
     .pulse-close { animation: pulseClose 1.2s ease-in-out infinite; }
     .star-burst { position: relative; overflow: hidden; }
@@ -342,13 +356,20 @@
       0% { opacity: 0; transform: translateY(18px); }
       100% { opacity: 1; transform: translateY(0); }
     }
-      100% { right: 180%; }
+    @keyframes lionBounce {
+      0%,100% { transform: translateY(0) rotate(0deg); }
+      25% { transform: translateY(-14px) rotate(-8deg); }
+      50% { transform: translateY(0) rotate(0deg); }
+      75% { transform: translateY(-10px) rotate(8deg); }
     }
-      100% { right: 160%; }
+    @keyframes giftPulse {
+      0%,100% { transform: scale(1) rotate(0deg); }
+      35% { transform: scale(1.08) rotate(-6deg); }
+      70% { transform: scale(0.96) rotate(6deg); }
     }
 
     @media (max-width: 640px) {
-      .row, .row.three { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
       .kid-title { font-size: 28px; }
     }
   </style></head>
@@ -369,7 +390,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "1.3";
+    var APP_VERSION = "1.5";
 
     function safeNumber(v){ return Number(v || 0); }
     function parentLabel(role){
@@ -448,10 +469,7 @@
           noya: DEFAULT_CHILD_PASSWORDS.noya
         };
 
-        await ref.set({
-          passwords: PASSWORDS,
-          childPasswords: CHILD_PASSWORDS
-        });
+        await ref.set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS });
       } else {
         var data = snap.data() || {};
         var savedPasswords = data.passwords || {};
@@ -462,7 +480,6 @@
           mother: savedPasswords.mother || DEFAULT_PASSWORDS.mother,
           grandma: savedPasswords.grandma || DEFAULT_PASSWORDS.grandma
         };
-
         CHILD_PASSWORDS = {
           meir: savedChildPasswords.meir || DEFAULT_CHILD_PASSWORDS.meir,
           lavi: savedChildPasswords.lavi || DEFAULT_CHILD_PASSWORDS.lavi,
@@ -470,10 +487,7 @@
           noya: savedChildPasswords.noya || DEFAULT_CHILD_PASSWORDS.noya
         };
 
-        await ref.set({
-          passwords: PASSWORDS,
-          childPasswords: CHILD_PASSWORDS
-        }, { merge:true });
+        await ref.set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
       }
     }
 
@@ -518,24 +532,49 @@
     }
 
     function showSplash(){
+      var variants = [
+        {
+          icon: '⭐',
+          iconStyle: 'font-size:88px; animation:spinStar 2.8s linear infinite; filter:drop-shadow(0 8px 18px rgba(251,191,36,.35));',
+          title: 'אפליקציית הכוכבים',
+          subtitle: 'של מאיר ולביא',
+          note: 'כוכבים, פרסים, יעדים וחיוכים ✨',
+          extras: '🦁 🐯 ⭐ 🎁'
+        },
+        {
+          icon: '🦁',
+          iconStyle: 'font-size:88px; animation:lionBounce 2.3s ease-in-out infinite; filter:drop-shadow(0 8px 18px rgba(251,146,60,.32));',
+          title: 'שלום מאיר ולביא',
+          subtitle: 'מוכנים לעולם של כוכבים?',
+          note: 'כל כניסה היא התחלה של הרפתקה חדשה 🌟',
+          extras: '🦁 ⭐ 🏆 ✨'
+        },
+        {
+          icon: '🎁',
+          iconStyle: 'font-size:88px; animation:giftPulse 2.1s ease-in-out infinite; filter:drop-shadow(0 8px 18px rgba(244,114,182,.30));',
+          title: 'ברוכים הבאים',
+          subtitle: 'למסיבת הכוכבים של הילדים',
+          note: 'מחכים לכם פרסים, יעדים והמון הפתעות 🎉',
+          extras: '🎁 🌈 ⭐ 🦋'
+        }
+      ];
+      var splash = variants[Math.floor(Math.random() * variants.length)];
       document.getElementById("app").innerHTML = `
         <div class="hero">
           <div class="card app-shimmer" style="min-height:340px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);">
-            <div style="font-size:88px; animation:spinStar 2.8s linear infinite; filter:drop-shadow(0 8px 18px rgba(251,191,36,.35));">⭐</div>
-            <div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px; animation:fadeRise .7s ease both;">אפליקציית הכוכבים</div>
-            <div style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px; animation:fadeRise .7s ease .2s both;">של מאיר ולביא</div>
-            <div style="margin-top:14px; color:#6b7280; font-size:15px; animation:fadeRise .7s ease .4s both;">כוכבים, פרסים, יעדים וחיוכים ✨</div>
+            <div style="${splash.iconStyle}">${splash.icon}</div>
+            <div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px; animation:fadeRise .7s ease both;">${splash.title}</div>
+            <div style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px; animation:fadeRise .7s ease .2s both;">${splash.subtitle}</div>
+            <div style="margin-top:14px; color:#6b7280; font-size:15px; animation:fadeRise .7s ease .4s both;">${splash.note}</div>
             <div style="display:flex; gap:10px; margin-top:18px; font-size:28px; animation:fadeRise .7s ease .6s both;">
-              <span>🦁</span><span>🐯</span><span>⭐</span><span>🎁</span>
+              ${splash.extras.split(' ').map(icon => `<span>${icon}</span>`).join('')}
             </div>
             <div style="margin-top:18px; font-size:13px; color:#94a3b8;">גרסה ${APP_VERSION}</div>
           </div>
         </div>
       `;
 
-      setTimeout(function(){
-        home();
-      }, 4200);
+      setTimeout(function(){ home(); }, 4200);
     }
 
     function showMoreKids(){
@@ -772,17 +811,13 @@
             <br><button onclick="changeOwnChildPassword('${id}')">שמור סיסמה חדשה</button>
           </div>
 
-          <div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div>
+          <div style="margin-top:14px"><button class="secondary" onclick="${(id === 'itai' || id === 'noya') ? 'showMoreKids()' : 'home()'}">חזרה</button></div>
         </div>
       `;
     }
 
     async function loadParentSummary(role){
-      var ids =
-        role === "father" ? ["meir","lavi"] :
-        role === "mother" ? ["meir","lavi","itai","noya"] :
-        ["meir","lavi"];
-
+      var ids = role === "father" ? ["meir","lavi"] : role === "mother" ? ["meir","lavi","itai","noya"] : ["meir","lavi"];
       var html = "";
 
       for(var i = 0; i < ids.length; i++){
@@ -824,14 +859,11 @@
       }
 
       var el = document.getElementById("parentSummary");
-      if(el){
-        el.innerHTML = html;
-      }
+      if(el){ el.innerHTML = html; }
     }
 
     function parent(role){
       user = role;
-
       var passwordsBlock = "";
       var adminBlock = "";
       var childRadioOptions = "";
@@ -841,7 +873,6 @@
           <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" checked> מאיר</label>
           <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi"> לביא</label>
         `;
-
         passwordsBlock = `
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);">
             <h3 style="margin-top:0">הסיסמאות של כולם</h3>
@@ -856,7 +887,6 @@
             </div>
           </div>
         `;
-
         adminBlock = `
           <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7f7);">
             <h3 style="margin-top:0">ניהול מתקדם</h3>
@@ -888,7 +918,8 @@
               <h3 style="margin:0">כמה כוכבים יש לכל ילד</h3>
               <button onclick="parent(user)">רענן 🔄</button>
             </div>
-            <div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div><div class="summary-scroll-hint">אפשר לגלול ימינה ושמאלה כדי לראות את כל הילדים</div>
+            <div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div>
+            <div class="summary-scroll-hint">אפשר לגלול ימינה ושמאלה כדי לראות את כל הילדים</div>
           </div>
 
           <div class="card" style="background:#fafafa; margin-top:0;">
@@ -896,19 +927,20 @@
             <div>${childRadioOptions}</div>
           </div>
 
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);">
-              <h3 style="margin-top:0">יעד ופרס</h3>
-              <input id="target" type="number" placeholder="יעד" style="width:90%;">
-              <input id="reward" placeholder="מתנה" style="width:90%;">
+          <div class="row" style="grid-template-columns:repeat(2,1fr); align-items:start;">
+            <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);">
+              <h3 style="margin-top:0">ניהול כוכבים</h3>
+              <input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;">
+              <input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;">
               <br>
-              <button onclick="saveTarget()">שמור יעד</button>
-              <button onclick="redeem()">מימוש פרס</button>
+              <button onclick="addStars()">הוסף</button>
+              <button onclick="removeStars()">הסר</button>
             </div>
 
             <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);">
-              <h3 style="margin-top:0">יעד ופרס</h3>
-              <input id="target" type="number" placeholder="יעד">
-              <input id="reward" placeholder="מתנה">
+              <h3 style="margin-top:0">הגדרת יעד ופרס</h3>
+              <input id="target" type="number" placeholder="יעד" style="width:90%;">
+              <input id="reward" placeholder="מתנה" style="width:90%;">
               <br>
               <button onclick="saveTarget()">שמור יעד</button>
               <button onclick="redeem()">מימוש פרס</button>
@@ -944,24 +976,22 @@
       var child = getSelectedChild();
       var amount = Number(document.getElementById("amount").value);
       var note = document.getElementById("note").value || "";
-
       if(!amount || amount < 1){
         alert("הכנס כמות תקינה");
         return;
       }
 
       var data = await getChildData(child);
-
       if(user === "father"){
-        if(child === "itai"){
-          alert("לאיתי רק אמא נותנת כוכבים");
+        if(child === "itai" || child === "noya"){
+          alert("לילדים האלה רק אמא נותנת כוכבים");
           return;
         }
         data.father = type === "add" ? safeNumber(data.father) + amount : Math.max(0, safeNumber(data.father) - amount);
       } else if(user === "mother"){
         data.mother = type === "add" ? safeNumber(data.mother) + amount : Math.max(0, safeNumber(data.mother) - amount);
       } else if(user === "grandma"){
-        if(child === "itai"){
+        if(child === "itai" || child === "noya"){
           alert("סבתא שמחה יכולה לתת כוכבים רק למאיר וללביא");
           return;
         }
@@ -969,16 +999,8 @@
       }
 
       var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: type,
-        amount: amount,
-        note: note,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
+      logs.unshift({ parent: user, action: type, amount: amount, note: note, createdAtText: nowText(), createdAtMillis: Date.now() });
       data.logs = logs.slice(0,100);
-
       await db.collection("children").doc(child).set(data, { merge:true });
       alert("עודכן");
       parent(user);
@@ -988,17 +1010,15 @@
       var child = getSelectedChild();
       var target = Number(document.getElementById("target").value);
       var reward = document.getElementById("reward").value;
-
       if(!target || target < 1){
         alert("הכנס יעד תקין");
         return;
       }
 
       var data = await getChildData(child);
-
       if(user === "father"){
-        if(child === "itai"){
-          alert("לאיתי רק אמא יש יעד ומתנה");
+        if(child === "itai" || child === "noya"){
+          alert("לילדים האלה רק אמא יש יעד ומתנה");
           return;
         }
         data.targetFather = target;
@@ -1007,7 +1027,7 @@
         data.targetMother = target;
         data.rewardMother = reward;
       } else if(user === "grandma"){
-        if(child === "itai"){
+        if(child === "itai" || child === "noya"){
           alert("סבתא שמחה יכולה להגדיר יעד רק למאיר וללביא");
           return;
         }
@@ -1016,15 +1036,8 @@
       }
 
       var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: "target",
-        note: "יעד: " + target + " | מתנה: " + reward,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
+      logs.unshift({ parent: user, action: "target", note: "יעד: " + target + " | מתנה: " + reward, createdAtText: nowText(), createdAtMillis: Date.now() });
       data.logs = logs.slice(0,100);
-
       await db.collection("children").doc(child).set(data, { merge:true });
       alert("נשמר");
       parent(user);
@@ -1033,17 +1046,16 @@
     async function redeem(){
       var child = getSelectedChild();
       var data = await getChildData(child);
-
       if(user === "father"){
-        if(child === "itai"){
-          alert("לאיתי רק אמא יכולה לממש פרס");
+        if(child === "itai" || child === "noya"){
+          alert("לילדים האלה רק אמא יכולה לממש פרס");
           return;
         }
         data.father = 0;
       } else if(user === "mother"){
         data.mother = 0;
       } else if(user === "grandma"){
-        if(child === "itai"){
+        if(child === "itai" || child === "noya"){
           alert("סבתא שמחה יכולה לממש פרס רק למאיר וללביא");
           return;
         }
@@ -1051,15 +1063,8 @@
       }
 
       var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: "redeem",
-        note: "בוצע מימוש פרס ואיפוס המסלול",
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
+      logs.unshift({ parent: user, action: "redeem", note: "בוצע מימוש פרס ואיפוס המסלול", createdAtText: nowText(), createdAtMillis: Date.now() });
       data.logs = logs.slice(0,100);
-
       await db.collection("children").doc(child).set(data, { merge:true });
       alert("הפרס מומש והמסלול אופס");
       parent(user);
@@ -1071,7 +1076,6 @@
         alert("הסיסמה לא יכולה להיות ריקה");
         return;
       }
-
       PASSWORDS[user] = newPass;
       await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
       alert("הסיסמה נשמרה");
@@ -1090,13 +1094,8 @@
         alert("הסיסמה לא יכולה להיות ריקה");
         return;
       }
-
       CHILD_PASSWORDS[child] = newPass;
-      await db.collection("settings").doc("app").set({
-        passwords: PASSWORDS,
-        childPasswords: CHILD_PASSWORDS
-      }, { merge:true });
-
+      await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
       alert("הסיסמה החדשה נשמרה");
       childLogin(child);
     }
@@ -1104,7 +1103,7 @@
     async function clearChildLogs(){
       var child = getSelectedChild();
       var ok = confirm("לנקות את כל הלוגים של " + childLabel(child) + "?");
-      if(!ok){ return; }
+      if(!ok) return;
       var data = await getChildData(child);
       data.logs = [];
       await db.collection("children").doc(child).set(data, { merge:true });
@@ -1114,8 +1113,8 @@
 
     async function clearAllLogs(){
       var ok = confirm("לנקות את כל הלוגים של כל הילדים?");
-      if(!ok){ return; }
-      var children = ["meir","lavi","itai"];
+      if(!ok) return;
+      var children = ["meir","lavi","itai","noya"];
       for(var i = 0; i < children.length; i++){
         var childId = children[i];
         var data = await getChildData(childId);
@@ -1128,9 +1127,9 @@
 
     async function resetAll(){
       var ok = confirm("אתה בטוח שאתה רוצה לאפס את כל המערכת? זה יאפס כוכבים, יעדים, מתנות, לוגים וסיסמאות.");
-      if(!ok){ return; }
+      if(!ok) return;
 
-      var children = ["meir","lavi","itai"];
+      var children = ["meir","lavi","itai","noya"];
       for(var i = 0; i < children.length; i++){
         await db.collection("children").doc(children[i]).set({
           father: 0,
@@ -1142,18 +1141,12 @@
           rewardFather: "",
           rewardMother: "",
           rewardGrandma: "",
-          logs: [{
-            parent: user,
-            action: "reset",
-            note: "בוצע איפוס מלא למערכת",
-            createdAtText: nowText(),
-            createdAtMillis: Date.now()
-          }]
+          logs: [{ parent: user, action: "reset", note: "בוצע איפוס מלא למערכת", createdAtText: nowText(), createdAtMillis: Date.now() }]
         });
       }
 
       PASSWORDS = { father: DEFAULT_PASSWORDS.father, mother: DEFAULT_PASSWORDS.mother, grandma: DEFAULT_PASSWORDS.grandma };
-      CHILD_PASSWORDS = { meir: DEFAULT_CHILD_PASSWORDS.meir, lavi: DEFAULT_CHILD_PASSWORDS.lavi, itai: DEFAULT_CHILD_PASSWORDS.itai };
+      CHILD_PASSWORDS = { meir: DEFAULT_CHILD_PASSWORDS.meir, lavi: DEFAULT_CHILD_PASSWORDS.lavi, itai: DEFAULT_CHILD_PASSWORDS.itai, noya: DEFAULT_CHILD_PASSWORDS.noya };
       await db.collection("settings").doc("app").set({ passwords: PASSWORDS, childPasswords: CHILD_PASSWORDS }, { merge:true });
       alert("המערכת אופסה בהצלחה");
       home();
