@@ -504,12 +504,16 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.5.1";
+var APP_VERSION = "2.5.2";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
-var MASTER_PASSWORD_PLAIN_LEGACY = "";
 var MASTER_PASSWORDS_VISIBLE = false;
+var ADMIN_BOOTSTRAP_MODE = false;
+var ADMIN_SECURITY = {
+  masterPasswordHash: MASTER_PASSWORD_HASH,
+  adminPanelPasswordHash: ""
+};
 var user = null;
 var APP_SETTINGS = {
   parentsDirectory: {},
@@ -627,14 +631,40 @@ function adminVersionTap(){
   }
 }
 function showAdminPassword(){
-  document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>ניהול מתקדם</h2><div class="small">הכנס את סיסמת המפתח</div><input id="adminPass" type="password" placeholder="סיסמת מפתח"><br><button onclick="checkAdminPassword()">כניסה לניהול</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>ניהול מתקדם</h2><div class="small">הכנס סיסמת מאסטר או סיסמת אדמין פאנל</div><input id="adminPass" type="password" placeholder="סיסמת מפתח"><br><button onclick="checkAdminPassword()">כניסה לניהול</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
 }
+
 async function checkAdminPassword(){
   var pass = document.getElementById("adminPass").value;
   var passHash = await sha256Hex(pass || "");
-  if(passHash !== MASTER_PASSWORD_HASH){ appAlert(funnyWrongPassword()); return; }
+  var masterHash = ADMIN_SECURITY.masterPasswordHash || MASTER_PASSWORD_HASH;
+  var adminHash = ADMIN_SECURITY.adminPanelPasswordHash || "";
+  if(passHash !== masterHash && (!adminHash || passHash !== adminHash)){ appAlert(funnyWrongPassword()); return; }
   renderAdminPanel();
 }
+
+async function saveAdminSecurity(){
+  await db.collection("settings").doc("app").set({
+    adminSecurity: ADMIN_SECURITY
+  }, { merge:true });
+}
+
+async function saveAdminPanelPassword(){
+  var pass = (document.getElementById('adminPanelPassword')?.value || '').trim();
+  if(!pass){
+    appAlert('מלא סיסמה לאדמין פאנל');
+    return;
+  }
+  ADMIN_SECURITY.adminPanelPasswordHash = await sha256Hex(pass);
+  await saveAdminSecurity();
+  appAlert('סיסמת האדמין פאנל נשמרה');
+  renderAdminPanel();
+}
+
+function renderAdminPanelPasswordManager(){
+  return `<div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#eef2ff)"><h3 style="margin-top:0">🔐 סיסמת אדמין פאנל</h3><div class="small">אפשר להיכנס לניהול גם עם סיסמת המאסטר הקבועה וגם עם הסיסמה שאתה יוצר כאן ושומר בפיירבייס.</div><input id="adminPanelPassword" type="password" placeholder="${ADMIN_SECURITY.adminPanelPasswordHash ? 'שנה סיסמת אדמין פאנל' : 'צור סיסמת אדמין פאנל'}"><br><button onclick="saveAdminPanelPassword()">${ADMIN_SECURITY.adminPanelPasswordHash ? 'שמור סיסמה חדשה' : 'צור סיסמה'}</button>${ADMIN_BOOTSTRAP_MODE ? '<div class="small" style="margin-top:10px;color:#166534">המערכת עלתה במצב התקנה ראשונית כי אין עדיין הורים וילדים.</div>' : ''}</div>`;
+}
+
 async function ensureChildDocExists(childId){
   var snap = await db.collection("children").doc(childId).get();
   if(!snap.exists){
@@ -865,6 +895,7 @@ function renderAdminPasswordsHtml(){
 
 function renderAdminPanel(){
   document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:1180px"><h2>ממשק ניהול מתקדם</h2><div class="small">כאן אפשר לערוך ילדים, הורים, סיסמאות, צבעים, אייקונים, קבוצות והרשאות</div>
+    ${renderAdminPanelPasswordManager()}
     ${renderAdminPasswordsHtml()}
     <div class="row">
       <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f8fafc)">
@@ -965,10 +996,39 @@ function defaultPermissions(parents, children){
   });
   return p;
 }
+
 async function ensureSettings(){
   var ref = db.collection("settings").doc("app");
   var snap = await ref.get();
   var data = snap.data() || {};
+  var isFreshInstall = !data.parentsDirectory && !data.childrenDirectory && !data.permissionsMatrix && !data.passwords && !data.childPasswords;
+
+  ADMIN_SECURITY = {
+    masterPasswordHash: (data.adminSecurity && data.adminSecurity.masterPasswordHash) || MASTER_PASSWORD_HASH,
+    adminPanelPasswordHash: (data.adminSecurity && data.adminSecurity.adminPanelPasswordHash) || ""
+  };
+
+  if(isFreshInstall){
+    ADMIN_BOOTSTRAP_MODE = true;
+    APP_SETTINGS.parentsDirectory = {};
+    APP_SETTINGS.childrenDirectory = {};
+    APP_SETTINGS.permissionsMatrix = {};
+    APP_SETTINGS.presetTasks = {};
+    APP_SETTINGS.sharedShop = Array.isArray(data.sharedShop) ? data.sharedShop : [];
+    PASSWORDS = {};
+    CHILD_PASSWORDS = {};
+    await ref.set({
+      adminSecurity: ADMIN_SECURITY,
+      parentsDirectory: APP_SETTINGS.parentsDirectory,
+      childrenDirectory: APP_SETTINGS.childrenDirectory,
+      permissionsMatrix: APP_SETTINGS.permissionsMatrix,
+      presetTasks: APP_SETTINGS.presetTasks,
+      sharedShop: APP_SETTINGS.sharedShop
+    }, { merge:true });
+    return;
+  }
+
+  ADMIN_BOOTSTRAP_MODE = false;
   var fallbackParents = {
     father: {name:"אבא", password:(data.passwords||{}).father || "1111", emoji:"👨", color:"#3b82f6", isMaster:true},
     mother: {name:"אמא", password:(data.passwords||{}).mother || "2222", emoji:"👩", color:"#ec4899", isMaster:false},
@@ -985,7 +1045,9 @@ async function ensureSettings(){
     APP_SETTINGS.parentsDirectory[parentId] = normalizeParentEntry(parentId, (data.parentsDirectory || fallbackParents)[parentId]);
   });
   APP_SETTINGS.childrenDirectory = {};
-  Object.keys(data.childrenDirectory || fallbackChildren).forEach(function(childId){ APP_SETTINGS.childrenDirectory[childId] = normalizeChildEntry(childId, (data.childrenDirectory || fallbackChildren)[childId]); });
+  Object.keys(data.childrenDirectory || fallbackChildren).forEach(function(childId){
+    APP_SETTINGS.childrenDirectory[childId] = normalizeChildEntry(childId, (data.childrenDirectory || fallbackChildren)[childId]);
+  });
   APP_SETTINGS.permissionsMatrix = data.permissionsMatrix || defaultPermissions(APP_SETTINGS.parentsDirectory, APP_SETTINGS.childrenDirectory);
   PASSWORDS = {};
   Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(k){ PASSWORDS[k] = APP_SETTINGS.parentsDirectory[k].password || ""; });
@@ -999,7 +1061,8 @@ async function ensureSettings(){
       if(firstAllowed) SELECTED_PARENT_CHILD[k] = firstAllowed;
     }
   });
-  await db.collection("settings").doc("app").set({
+  await ref.set({
+    adminSecurity: ADMIN_SECURITY,
     parentsDirectory: APP_SETTINGS.parentsDirectory,
     childrenDirectory: APP_SETTINGS.childrenDirectory,
     permissionsMatrix: APP_SETTINGS.permissionsMatrix,
@@ -1528,7 +1591,7 @@ async function saveChildAppearance(child){
 
 async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){appAlert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); appAlert('הסיסמה החדשה נשמרה'); childLogin(child); }
 function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
-(async function start(){ try { await ensureSettings(); showSplash(); } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${(e && e.message) ? e.message : e}</div>`; } })();
+(async function start(){ try { await ensureSettings(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
 </script>
 </body>
 </html>
