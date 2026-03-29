@@ -467,7 +467,9 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.4";
+var APP_VERSION = "2.4.1";
+var ADMIN_TAP_COUNT = 0;
+var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD = "plsM@L8088";
 var user = null;
 var APP_SETTINGS = {
@@ -481,13 +483,213 @@ var PASSWORDS = {};
 var CHILD_PASSWORDS = {};
 var SELECTED_PARENT_CHILD = {};
 
+function normalizeChildEntry(id, obj){
+  obj = obj || {};
+  var gender = obj.gender === 'girl' ? 'girl' : 'boy';
+  return {
+    name: obj.name || id,
+    password: obj.password || '1234',
+    gender: gender,
+    emoji: obj.emoji || (gender === 'girl' ? '🦋' : '🦁'),
+    color: obj.color || (gender === 'girl' ? '#ec4899' : '#3b82f6'),
+    group: obj.group || 'main',
+    customGroup: obj.customGroup || ''
+  };
+}
+function childConfig(id){
+  return normalizeChildEntry(id, APP_SETTINGS.childrenDirectory[id] || {});
+}
+function adminVersionTap(){
+  ADMIN_TAP_COUNT++;
+  if(ADMIN_TAP_TIMER) clearTimeout(ADMIN_TAP_TIMER);
+  ADMIN_TAP_TIMER = setTimeout(function(){ ADMIN_TAP_COUNT = 0; }, 1800);
+  if(ADMIN_TAP_COUNT >= 10){
+    ADMIN_TAP_COUNT = 0;
+    showAdminPassword();
+  }
+}
+function showAdminPassword(){
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>ניהול מתקדם</h2><div class="small">הכנס את סיסמת המפתח</div><input id="adminPass" type="password" placeholder="סיסמת מפתח"><br><button onclick="checkAdminPassword()">כניסה לניהול</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
+}
+function checkAdminPassword(){
+  var pass = document.getElementById("adminPass").value;
+  if(pass !== MASTER_PASSWORD){ alert(funnyWrongPassword()); return; }
+  renderAdminPanel();
+}
+async function ensureChildDocExists(childId){
+  var snap = await db.collection("children").doc(childId).get();
+  if(!snap.exists){
+    await db.collection("children").doc(childId).set({
+      scores:{}, targets:{}, rewards:{}, logs:[], pendingTasks:[], pendingShopRequests:[]
+    }, {merge:true});
+  }
+}
+function groupedChildrenForHome(){
+  var groups = { main: [], more: [], custom: {} };
+  Object.keys(APP_SETTINGS.childrenDirectory).forEach(function(childId){
+    var c = childConfig(childId);
+    var buttonHtml = `<button onclick="childLogin('${childId}')" style="background:${c.color}">${c.emoji} ${c.name}</button>`;
+    if(c.group === 'main') groups.main.push(buttonHtml);
+    else if(c.group === 'more') groups.more.push(buttonHtml);
+    else {
+      var g = c.customGroup || 'עוד';
+      if(!groups.custom[g]) groups.custom[g] = [];
+      groups.custom[g].push(buttonHtml);
+    }
+  });
+  return groups;
+}
+async function addAdminChild(){
+  var name = document.getElementById('adminChildName').value.trim();
+  var key = (document.getElementById('adminChildKey').value || '').trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_\-]/g,'');
+  var password = document.getElementById('adminChildPassword').value.trim() || '1234';
+  var gender = document.getElementById('adminChildGender').value;
+  var emoji = document.getElementById('adminChildEmoji').value.trim() || (gender === 'girl' ? '🦋' : '🦁');
+  var color = document.getElementById('adminChildColor').value || (gender === 'girl' ? '#ec4899' : '#3b82f6');
+  var group = document.getElementById('adminChildGroup').value;
+  var customGroup = document.getElementById('adminChildCustomGroup').value.trim();
+  if(!name || !key){ alert('מלא שם ומזהה לילד'); return; }
+  APP_SETTINGS.childrenDirectory[key] = { name:name, password:password, gender:gender, emoji:emoji, color:color, group:group, customGroup:customGroup };
+  CHILD_PASSWORDS[key] = password;
+  if(!APP_SETTINGS.permissionsMatrix[key]) APP_SETTINGS.permissionsMatrix[key] = {};
+  Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(parentId){
+    if(typeof APP_SETTINGS.permissionsMatrix[key][parentId] !== 'boolean'){
+      APP_SETTINGS.permissionsMatrix[key][parentId] = false;
+    }
+  });
+  if(!APP_SETTINGS.presetTasks[key]) APP_SETTINGS.presetTasks[key] = {};
+  Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(parentId){
+    if(!Array.isArray(APP_SETTINGS.presetTasks[key][parentId])) APP_SETTINGS.presetTasks[key][parentId] = [];
+  });
+  await ensureChildDocExists(key);
+  await saveAppSettings();
+  renderAdminPanel();
+}
+async function updateAdminChildField(id, field, value){
+  if(!APP_SETTINGS.childrenDirectory[id]) return;
+  APP_SETTINGS.childrenDirectory[id][field] = value;
+  if(field === 'gender'){
+    if(value === 'girl'){
+      if(!APP_SETTINGS.childrenDirectory[id].emoji || APP_SETTINGS.childrenDirectory[id].emoji === '🦁') APP_SETTINGS.childrenDirectory[id].emoji = '🦋';
+      if(!APP_SETTINGS.childrenDirectory[id].color || APP_SETTINGS.childrenDirectory[id].color === '#3b82f6') APP_SETTINGS.childrenDirectory[id].color = '#ec4899';
+    } else {
+      if(!APP_SETTINGS.childrenDirectory[id].emoji || APP_SETTINGS.childrenDirectory[id].emoji === '🦋') APP_SETTINGS.childrenDirectory[id].emoji = '🦁';
+      if(!APP_SETTINGS.childrenDirectory[id].color || APP_SETTINGS.childrenDirectory[id].color === '#ec4899') APP_SETTINGS.childrenDirectory[id].color = '#3b82f6';
+    }
+  }
+  if(field === 'password') CHILD_PASSWORDS[id] = value;
+  await saveAppSettings();
+  renderAdminPanel();
+}
+async function deleteAdminChild(id){
+  var ok = confirm('למחוק את הילד הזה ממערכת הניהול?');
+  if(!ok) return;
+  delete APP_SETTINGS.childrenDirectory[id];
+  delete APP_SETTINGS.permissionsMatrix[id];
+  delete APP_SETTINGS.presetTasks[id];
+  delete CHILD_PASSWORDS[id];
+  await saveAppSettings();
+  renderAdminPanel();
+}
+function toggleAdminPermission(childId, parentId, checked){
+  APP_SETTINGS.permissionsMatrix[childId] = APP_SETTINGS.permissionsMatrix[childId] || {};
+  APP_SETTINGS.permissionsMatrix[childId][parentId] = checked;
+}
+async function saveAdminPermissions(){
+  await saveAppSettings();
+  alert('ההרשאות נשמרו');
+  renderAdminPanel();
+}
+function groupLabelFromConfig(c){
+  if(c.group === 'custom') return c.customGroup || 'קבוצה מותאמת';
+  if(c.group === 'more') return 'עוד ילדים';
+  return 'ראשי';
+}
+function renderAdminChildrenEditorHtml(){
+  var ids = Object.keys(APP_SETTINGS.childrenDirectory);
+  if(!ids.length) return '<div class="small">אין ילדים במערכת</div>';
+  return ids.map(function(childId){
+    var c = childConfig(childId);
+    return `<div class="summary-card" style="min-width:unset;max-width:none;flex:none;margin-bottom:12px;text-align:right">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><strong>${c.emoji} ${c.name}</strong> <span class="small">(${childId})</span></div>
+        <button class="danger mini" onclick="deleteAdminChild('${childId}')">מחק ילד</button>
+      </div>
+      <input value="${c.name.replace(/"/g,'&quot;')}" onchange="updateAdminChildField('${childId}','name',this.value)" placeholder="שם הילד">
+      <input value="${(c.password||'').replace(/"/g,'&quot;')}" onchange="updateAdminChildField('${childId}','password',this.value)" placeholder="סיסמה">
+      <select onchange="updateAdminChildField('${childId}','gender',this.value)">
+        <option value="boy" ${c.gender==='boy'?'selected':''}>ילד</option>
+        <option value="girl" ${c.gender==='girl'?'selected':''}>ילדה</option>
+      </select>
+      <input value="${(c.emoji||'').replace(/"/g,'&quot;')}" onchange="updateAdminChildField('${childId}','emoji',this.value)" placeholder="אייקון">
+      <input type="color" value="${c.color || '#3b82f6'}" onchange="updateAdminChildField('${childId}','color',this.value)">
+      <select onchange="updateAdminChildField('${childId}','group',this.value)">
+        <option value="main" ${c.group==='main'?'selected':''}>קבוצה ראשית</option>
+        <option value="more" ${c.group==='more'?'selected':''}>עוד ילדים</option>
+        <option value="custom" ${c.group==='custom'?'selected':''}>קבוצה מותאמת</option>
+      </select>
+      <input value="${(c.customGroup||'').replace(/"/g,'&quot;')}" onchange="updateAdminChildField('${childId}','customGroup',this.value)" placeholder="שם קבוצה מותאמת">
+      <div class="muted-box"><div class="small">תצוגה מקדימה</div><div style="margin-top:8px"><span style="display:inline-block;background:${c.color};color:#fff;padding:10px 12px;border-radius:14px;font-weight:bold">${c.emoji} ${c.name}</span></div><div class="small" style="margin-top:8px">קבוצה: ${groupLabelFromConfig(c)}</div></div>
+    </div>`;
+  }).join('');
+}
+function renderAdminPermissionsHtml(){
+  var childIds = Object.keys(APP_SETTINGS.childrenDirectory);
+  var parentIds = Object.keys(APP_SETTINGS.parentsDirectory);
+  if(!childIds.length || !parentIds.length) return '<div class="small">צריך לפחות ילד אחד והורה אחד</div>';
+  var header = `<tr><th style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">ילד</th>${parentIds.map(function(parentId){ return `<th style="padding:10px;border-bottom:1px solid #e5e7eb">${parentLabel(parentId)}</th>`; }).join('')}</tr>`;
+  var rows = childIds.map(function(childId){
+    return `<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${childConfig(childId).emoji} ${childLabel(childId)}</strong><div class="small">${groupLabelFromConfig(childConfig(childId))}</div></td>${parentIds.map(function(parentId){ var checked=!!(APP_SETTINGS.permissionsMatrix[childId] && APP_SETTINGS.permissionsMatrix[childId][parentId]); return `<td style="padding:10px;border-bottom:1px solid #e5e7eb"><label style="display:inline-flex;gap:8px;align-items:center"><input type="checkbox" ${checked?'checked':''} onchange="toggleAdminPermission('${childId}','${parentId}',this.checked)"><span>${checked?'מותר':'אסור'}</span></label></td>`; }).join('')}</tr>`;
+  }).join('');
+  return `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden">${header}${rows}</table></div>`;
+}
+function renderAdminGroupsPreview(){
+  var grouped = groupedChildrenForHome();
+  var parts = [];
+  if(grouped.main.length) parts.push(`<div class="card" style="margin-top:0"><h3 style="margin-top:0">כפתורים ראשיים</h3><div class="grid-buttons">${grouped.main.join('')}</div></div>`);
+  if(grouped.more.length) parts.push(`<div class="card" style="margin-top:0"><h3 style="margin-top:0">עוד ילדים</h3><div class="grid-buttons">${grouped.more.join('')}</div></div>`);
+  Object.keys(grouped.custom).forEach(function(groupName){ parts.push(`<div class="card" style="margin-top:0"><h3 style="margin-top:0">${groupName}</h3><div class="grid-buttons">${grouped.custom[groupName].join('')}</div></div>`); });
+  return parts.join('') || '<div class="small">אין ילדים לתצוגה</div>';
+}
+function renderAdminPanel(){
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:1100px"><h2>ממשק ניהול מתקדם</h2><div class="small">כאן אפשר לערוך ילדים, לשנות צבעים, אייקונים, קבוצות והרשאות</div>
+    <div class="row">
+      <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f8fafc)">
+        <h3 style="margin-top:0">הוספת ילד / ילדה</h3>
+        <input id="adminChildName" placeholder="שם הילד">
+        <input id="adminChildKey" placeholder="מזהה באנגלית, לדוגמה: meir">
+        <input id="adminChildPassword" placeholder="סיסמה">
+        <select id="adminChildGender" onchange="var isGirl=this.value==='girl';document.getElementById('adminChildColor').value=isGirl?'#ec4899':'#3b82f6';if(!document.getElementById('adminChildEmoji').value){document.getElementById('adminChildEmoji').value=isGirl?'🦋':'🦁';}">
+          <option value="boy">ילד</option>
+          <option value="girl">ילדה</option>
+        </select>
+        <input id="adminChildEmoji" placeholder="אייקון, לדוגמה: 🦁 / 🦋 / ⭐">
+        <input id="adminChildColor" type="color" value="#3b82f6">
+        <select id="adminChildGroup">
+          <option value="main">קבוצה ראשית</option>
+          <option value="more">עוד ילדים</option>
+          <option value="custom">קבוצה מותאמת</option>
+        </select>
+        <input id="adminChildCustomGroup" placeholder="שם קבוצה מותאמת">
+        <button onclick="addAdminChild()">שמור ילד</button>
+      </div>
+      <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#eef2ff)">
+        <h3 style="margin-top:0">תצוגת מסך הבית</h3>
+        ${renderAdminGroupsPreview()}
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#fff7ed)"><h3 style="margin-top:0">עריכת ילדים</h3>${renderAdminChildrenEditorHtml()}</div>
+    <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f0fdf4)"><h3 style="margin-top:0">הרשאות מסודרות</h3>${renderAdminPermissionsHtml()}<div style="margin-top:12px"><button onclick="saveAdminPermissions()">שמור הרשאות</button></div></div>
+    <button class="secondary" onclick="home()">חזרה</button>
+  </div>`;
+}
+
 function safeNumber(v){ return Number(v || 0); }
 function nowText(){ return new Intl.DateTimeFormat("he-IL", { dateStyle:"short", timeStyle:"short" }).format(new Date()); }
 function parentLabel(role){ return APP_SETTINGS.parentsDirectory[role]?.name || role; }
 function childLabel(id){ return APP_SETTINGS.childrenDirectory[id]?.name || id; }
 function childEmoji(id){
-  var map={meir:"🦁",lavi:"🐯",itai:"🐻",noya:"🦋"};
-  return map[id] || "⭐";
+  return childConfig(id).emoji || "⭐";
 }
 function funnyWrongPassword(){
   var messages=["אופס 😅 זאת לא הסיסמה שלך","כמעט! נסה שוב 😜","לא הפעם 🤭","עוד ניסיון קטן ותצליח 💪","זה לא זה, אבל אהבתי את הביטחון 😄"];
@@ -550,7 +752,8 @@ async function ensureSettings(){
     noya: {name:"נויה", password:(data.childPasswords||{}).noya || "1234"}
   };
   APP_SETTINGS.parentsDirectory = data.parentsDirectory || fallbackParents;
-  APP_SETTINGS.childrenDirectory = data.childrenDirectory || fallbackChildren;
+  APP_SETTINGS.childrenDirectory = {};
+  Object.keys(data.childrenDirectory || fallbackChildren).forEach(function(childId){ APP_SETTINGS.childrenDirectory[childId] = normalizeChildEntry(childId, (data.childrenDirectory || fallbackChildren)[childId]); });
   APP_SETTINGS.permissionsMatrix = data.permissionsMatrix || defaultPermissions(APP_SETTINGS.parentsDirectory, APP_SETTINGS.childrenDirectory);
   PASSWORDS = {};
   Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(k){ PASSWORDS[k] = APP_SETTINGS.parentsDirectory[k].password || ""; });
@@ -661,8 +864,11 @@ function getParentTipClass(role){
   return ['tip','tip mother','tip grandma'][idx < 0 ? 0 : idx];
 }
 function home(){
-  var childButtons = Object.keys(APP_SETTINGS.childrenDirectory).map(function(childId){
-    return `<button onclick="childLogin('${childId}')">${childEmoji(childId)} ${childLabel(childId)}</button>`;
+  var grouped = groupedChildrenForHome();
+  var childButtons = grouped.main.join('');
+  var moreSection = grouped.more.length ? `<button onclick="toggleMoreKids()">עוד ילדים ➕</button><div id="moreKidsBox" style="display:none; margin-top:10px">${grouped.more.join('')}</div>` : '';
+  var customSections = Object.keys(grouped.custom).map(function(groupName){
+    return `<div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f8fafc)"><h3 style="margin-top:0">${groupName}</h3><div class="grid-buttons">${grouped.custom[groupName].join('')}</div></div>`;
   }).join('');
   var parentButtons = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
     return `<button class="${parentId}" onclick="login('${parentId}')">כניסת ${parentLabel(parentId)}</button>`;
@@ -674,14 +880,18 @@ function home(){
         <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
         <div class="small">האפליקציה מחוברת למערכת הניהול החדשה</div>
         <div class="grid-buttons">${childButtons}</div>
+        ${moreSection}
+        ${customSections}
         <br>
         <div class="grid-buttons">${parentButtons}</div>
-        <div style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95;">גרסה ${APP_VERSION}</div>
+        <div id="versionTapZone" onclick="adminVersionTap()" style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95; cursor:pointer;">גרסה ${APP_VERSION}</div>
       </div>
     </div>`;
 }
+function toggleMoreKids(){ var el=document.getElementById('moreKidsBox'); if(!el) return; el.style.display = el.style.display==='none' ? 'block' : 'none'; }
+
 function showSplash(){
-  document.getElementById("app").innerHTML = `<div class="hero"><div class="card app-shimmer" style="min-height:320px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);"><div style="font-size:88px; animation:spinStar 2.8s linear infinite;">⭐</div><div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px;">אפליקציית הכוכבים</div><div style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px;">גרסה ${APP_VERSION}</div></div></div>`;
+  document.getElementById("app").innerHTML = `<div class="hero"><div class="card app-shimmer" style="min-height:320px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);"><div style="font-size:88px; animation:spinStar 2.8s linear infinite;">⭐</div><div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px;">אפליקציית הכוכבים</div><div onclick="adminVersionTap()" style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px; cursor:pointer;">גרסה ${APP_VERSION}</div></div></div>`;
   setTimeout(home, 2200);
 }
 function login(role){
@@ -750,7 +960,36 @@ async function child(id){
   var goalsHtml = buildGoalCard("היעד הכולל שלך", totalCurrent, totalTarget, "כל הפרסים בדרך", "total") + getAllowedParentsForChild(id).map(function(parentId){
     return buildGoalCard("היעד של " + parentLabel(parentId), safeNumber(data.scores[parentId]), safeNumber(data.targets[parentId])||100, data.rewards[parentId], parentId);
   }).join('');
-  document.getElementById("app").innerHTML = `<div class="kid-card card" style="background:linear-gradient(180deg,#fffdf5,#fff1f2); border:3px solid #fde68a;"><div class="badge floaty">${childEmoji(id)}</div><h2 class="kid-title" style="color:#be185d;">${childLabel(id)}</h2><div class="kid-sub" style="font-size:15px;">${buildLevelMessage(data,id)}</div>${totalCardHtml}<div class="stats-grid-parents">${statsHtml}</div>${goalsHtml}<div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac;"><h3 style="margin-top:0">⚡ משימות מוכנות</h3><div class="task-btn-wrap">${renderQuickTaskButtons(id,data)}</div></div><div class="pending-box"><h3 style="margin-top:0">⏳ ממתין לבדיקה</h3>${renderPendingStatusForChild(id,data)}</div><div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; text-align:right;"><h3 style="margin-top:0">🛒 חנות הפרסים</h3>${renderShopForChild(id,data)}</div><div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d;"><h3 style="margin-top:0">📝 על מה קיבלת כוכבים</h3>${logsHtml || '<div class="small">עדיין אין פעולות על הכוכבים שלך</div>'}</div><div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#eef2ff); border:2px dashed #c4b5fd;"><h3 style="margin-top:0">🔐 שינוי הסיסמה שלך</h3><input id="kidNewPass" type="password" placeholder="סיסמה חדשה"><div style="margin-top:6px; font-size:14px; color:#6b7280;"><label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" onchange="togglePasswordVisibility('kidNewPass', this)">הצג סיסמה</label></div><br><button onclick="changeOwnChildPassword('${id}')">שמור סיסמה חדשה</button></div><div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
+  document.getElementById("app").innerHTML = `<div class="kid-card card" style="background:linear-gradient(180deg,#fffdf5,#fff1f2); border:3px solid #fde68a;"><div class="badge floaty">${childEmoji(id)}</div><h2 class="kid-title" style="color:#be185d;">${childLabel(id)}</h2><div class="kid-sub" style="font-size:15px;">${buildLevelMessage(data,id)}</div>${totalCardHtml}<div class="stats-grid-parents">${statsHtml}</div>${goalsHtml}<div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac;"><h3 style="margin-top:0">⚡ משימות מוכנות</h3><div class="task-btn-wrap">${renderQuickTaskButtons(id,data)}</div></div><div class="pending-box"><h3 style="margin-top:0">⏳ ממתין לבדיקה</h3>${renderPendingStatusForChild(id,data)}</div><div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; text-align:right;"><h3 style="margin-top:0">🛒 חנות הפרסים</h3>${renderShopForChild(id,data)}</div><div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d;"><h3 style="margin-top:0">📝 על מה קיבלת כוכבים</h3>${logsHtml || '<div class="small">עדיין אין פעולות על הכוכבים שלך</div>'}</div><div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#eef2ff); border:2px dashed #c4b5fd;">
+            <h3 style="margin-top:0">🔐 שינוי סיסמה ועיצוב אישי</h3>
+            <div class="small">הילד יכול לשנות לעצמו סיסמה, אייקון וצבע כפתור</div>
+            <input id="kidNewPass" type="password" placeholder="סיסמה חדשה">
+            <div style="margin-top:6px; font-size:14px; color:#6b7280;">
+              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="checkbox" onchange="togglePasswordVisibility('kidNewPass', this)">הצג סיסמה
+              </label>
+            </div>
+            <button onclick="changeOwnChildPassword('${id}')">שמור סיסמה חדשה</button>
+            <hr>
+            <input id="kidNewEmoji" placeholder="אייקון חדש, לדוגמה: 🦁 / 🦋 / ⭐" value="${childConfig(id).emoji || ''}">
+            <input id="kidNewColor" type="color" value="${childConfig(id).color || '#3b82f6'}">
+            <div class="small">תצוגה מקדימה</div>
+            <div class="fake-button" id="kidAppearancePreview" style="background:${childConfig(id).color || '#3b82f6'}">${childConfig(id).emoji || '⭐'} ${childLabel(id)}</div>
+            <div style="margin-top:8px">
+              <button onclick="saveChildAppearance('${id}')">שמור עיצוב אישי</button>
+            </div>
+          </div><div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
+  var emojiInput = document.getElementById('kidNewEmoji');
+  var colorInput = document.getElementById('kidNewColor');
+  var previewEl = document.getElementById('kidAppearancePreview');
+  function refreshKidPreview(){
+    if(!previewEl) return;
+    previewEl.style.background = (colorInput && colorInput.value) || '#3b82f6';
+    previewEl.innerHTML = ((emojiInput && emojiInput.value) || '⭐') + ' ' + childLabel(id);
+  }
+  if(emojiInput) emojiInput.addEventListener('input', refreshKidPreview);
+  if(colorInput) colorInput.addEventListener('input', refreshKidPreview);
+  refreshKidPreview();
 }
 async function requestQuickTask(childId, role, taskIndex){
   var task = APP_SETTINGS.presetTasks[childId]?.[role]?.[taskIndex];
@@ -911,6 +1150,18 @@ async function redeem(){
   await saveChildData(child,data); alert('הפרס מומש והמסלול אופס'); parent(user);
 }
 async function changePassword(){ var newPass=document.getElementById('newPass').value; if(newPass===''){alert('הסיסמה לא יכולה להיות ריקה'); return;} PASSWORDS[user]=newPass; APP_SETTINGS.parentsDirectory[user].password=newPass; await saveAppSettings(); alert('הסיסמה נשמרה'); parent(user); }
+
+async function saveChildAppearance(child){
+  var newEmoji = (document.getElementById('kidNewEmoji')?.value || '').trim();
+  var newColor = document.getElementById('kidNewColor')?.value || '';
+  if(!APP_SETTINGS.childrenDirectory[child]) return;
+  if(newEmoji) APP_SETTINGS.childrenDirectory[child].emoji = newEmoji;
+  if(newColor) APP_SETTINGS.childrenDirectory[child].color = newColor;
+  await saveAppSettings();
+  alert('העיצוב החדש נשמר ✨');
+  childLogin(child);
+}
+
 async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){alert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); alert('הסיסמה החדשה נשמרה'); childLogin(child); }
 function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
 (async function start(){ try { await ensureSettings(); showSplash(); } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${(e && e.message) ? e.message : e}</div>`; } })();
