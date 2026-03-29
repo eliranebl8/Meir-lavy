@@ -522,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.7.0";
+var APP_VERSION = "2.7.1";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -1875,6 +1875,31 @@ function renderShopEditor(){
   return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#ecfdf5);"><h3 style="margin-top:0">ניהול חנות פרסים משותפת</h3><input id="shopName" placeholder="שם הפרס" style="width:90%;"><input id="shopPrice" type="number" placeholder="מחיר בכוכבים" style="width:90%;"><br><button class="shop" onclick="addShopItem()">הוסף פרס</button><div style="margin-top:10px; text-align:right;">${APP_SETTINGS.sharedShop.length ? APP_SETTINGS.sharedShop.map((item,index)=>`<div class="shop-line"><div><strong>${item.name}</strong> • ${item.price} כוכבים</div><button class="danger mini" onclick="removeShopItem(${index})">מחק</button></div>`).join('') : '<div class="small">אין פרסים בחנות עדיין</div>'}</div></div>`;
 }
 
+
+async function sendMasterBroadcastPush(){
+  if(!isMasterParent(user)){ appAlert('רק הורה מאסטר יכול לשלוח פוש לכולם'); return; }
+  var title = (document.getElementById('masterBroadcastTitle')?.value || '').trim();
+  var body = (document.getElementById('masterBroadcastBody')?.value || '').trim();
+  if(!title || !body){ appAlert('מלא כותרת והודעה'); return; }
+  await db.collection('notifications').add({
+    title: title,
+    body: body,
+    senderClientId: CLIENT_INSTANCE_ID,
+    broadcastAll: true,
+    targetParents: [],
+    targetChildren: [],
+    createdAtMillis: Date.now(),
+    createdAtText: nowText()
+  });
+  appAlert('פוש נשלח לכולם 🚀');
+  document.getElementById('masterBroadcastTitle').value='';
+  document.getElementById('masterBroadcastBody').value='';
+}
+function renderMasterBroadcastCard(){
+  if(!isMasterParent(user)) return '';
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff1f2); border:2px dashed #fda4af;"><h3 style="margin-top:0">📢 פוש חופשי לכולם</h3><div class="small">רק הורה מאסטר יכול לשלוח מכאן פוש לכל המכשירים, בלי קשר למטריצת הפוש.</div><input id="masterBroadcastTitle" placeholder="כותרת הפוש" style="width:90%;"><input id="masterBroadcastBody" placeholder="תוכן ההודעה" style="width:90%;"><br><button class="danger" onclick="sendMasterBroadcastPush()">שלח פוש לכולם</button></div>`;
+}
+
 function toggleMasterPasswords(){
   MASTER_PASSWORDS_VISIBLE = !MASTER_PASSWORDS_VISIBLE;
   if(user && isMasterParent(user)) parent(user);
@@ -1945,7 +1970,7 @@ function parent(role){
   if(!ids.length){ appAlert('אין לך כרגע ילדים מורשים'); home(); return; }
   if(!SELECTED_PARENT_CHILD[role] || !ids.includes(SELECTED_PARENT_CHILD[role])) SELECTED_PARENT_CHILD[role] = ids[0];
   var childRadioOptions = ids.map(function(childId){ return `<label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="${childId}" ${SELECTED_PARENT_CHILD[role]===childId?'checked':''} onchange="setSelectedChild('${role}','${childId}')"> ${childLabel(childId)}</label>`; }).join('');
-  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><div class="small" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:8px"><input id="pushToSelectedChild" type="checkbox" checked> שלח פוש לילד הזה אם ההורה סימן אותו במטריצת הפוש</label></div><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}${renderPushManager(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><div class="small" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:8px"><input id="pushToSelectedChild" type="checkbox" checked> שלח פוש לילד הזה אם ההורה סימן אותו במטריצת הפוש</label></div><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}${renderPushManager(role)}${renderMasterBroadcastCard()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
   loadParentSummary(role); loadPendingApprovals(role); syncCurrentTokenProfile('parent', role);
 }
 async function addPresetTask(role){
