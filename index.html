@@ -445,7 +445,21 @@
       70% { transform: scale(0.96) rotate(6deg); }
     }
 
-    
+
+    @keyframes rocketFloat {
+      0%,100% { transform: translateY(0) rotate(-4deg); }
+      50% { transform: translateY(-14px) rotate(4deg); }
+    }
+    @keyframes rainbowPulse {
+      0%,100% { transform: scale(1) rotate(0deg); filter:hue-rotate(0deg); }
+      50% { transform: scale(1.08) rotate(6deg); filter:hue-rotate(28deg); }
+    }
+    @keyframes orbDrift {
+      0%,100% { transform: translate(0,0) scale(1); }
+      50% { transform: translate(18px,-12px) scale(1.08); }
+    }
+
+
     .grid-buttons{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
     .pending-box{margin-top:12px;padding:12px;border-radius:18px;background:linear-gradient(180deg,#ffffff,#fff7ed);border:2px dashed #fdba74}
 
@@ -457,6 +471,12 @@
     .modal-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
     .modal-actions button{min-width:120px}
     .toast-box{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#111827;color:#fff;padding:12px 16px;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.25);z-index:9998;display:none;max-width:min(92vw,420px)}
+
+
+    .splash-card{box-shadow:0 22px 60px rgba(0,0,0,.12)}
+    .splash-orb{position:absolute;border-radius:999px;filter:blur(8px);opacity:.35;pointer-events:none}
+    .splash-orb-a{width:140px;height:140px;background:#ffffff;top:-20px;right:-10px;animation:orbDrift 6s ease-in-out infinite}
+    .splash-orb-b{width:180px;height:180px;background:#fde68a;bottom:-40px;left:-20px;animation:orbDrift 7s ease-in-out infinite reverse}
 
     @media (max-width: 640px) {
       .row { grid-template-columns: 1fr; }
@@ -484,10 +504,12 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.5";
+var APP_VERSION = "2.5.1";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
-var MASTER_PASSWORD = "plsM@L8088";
+var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
+var MASTER_PASSWORD_PLAIN_LEGACY = "";
+var MASTER_PASSWORDS_VISIBLE = false;
 var user = null;
 var APP_SETTINGS = {
   parentsDirectory: {},
@@ -499,6 +521,12 @@ var APP_SETTINGS = {
 var PASSWORDS = {};
 var CHILD_PASSWORDS = {};
 var SELECTED_PARENT_CHILD = {};
+
+async function sha256Hex(str){
+  var data = new TextEncoder().encode(str);
+  var digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map(function(b){ return b.toString(16).padStart(2,"0"); }).join("");
+}
 
 function showToast(msg){
   var el=document.getElementById('toastBox');
@@ -601,9 +629,10 @@ function adminVersionTap(){
 function showAdminPassword(){
   document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>ניהול מתקדם</h2><div class="small">הכנס את סיסמת המפתח</div><input id="adminPass" type="password" placeholder="סיסמת מפתח"><br><button onclick="checkAdminPassword()">כניסה לניהול</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
 }
-function checkAdminPassword(){
+async function checkAdminPassword(){
   var pass = document.getElementById("adminPass").value;
-  if(pass !== MASTER_PASSWORD){ appAlert(funnyWrongPassword()); return; }
+  var passHash = await sha256Hex(pass || "");
+  if(passHash !== MASTER_PASSWORD_HASH){ appAlert(funnyWrongPassword()); return; }
   renderAdminPanel();
 }
 async function ensureChildDocExists(childId){
@@ -1096,15 +1125,28 @@ function home(){
 function toggleMoreKids(){ var el=document.getElementById('moreKidsBox'); if(!el) return; el.style.display = el.style.display==='none' ? 'block' : 'none'; }
 
 function showSplash(){
-  document.getElementById("app").innerHTML = `<div class="hero"><div class="card app-shimmer" style="min-height:320px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);"><div style="font-size:88px; animation:spinStar 2.8s linear infinite;">⭐</div><div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px;">אפליקציית הכוכבים</div><div onclick="adminVersionTap()" style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px; cursor:pointer;">גרסה ${APP_VERSION}</div></div></div>`;
-  setTimeout(home, 2200);
+  var variants = [
+    { icon:'⭐', title:'אפליקציית הכוכבים', sub:'מוכנים לעוד סיבוב של כוכבים?', bg:'linear-gradient(180deg,#fffdf5,#ffe4e6)', anim:'spinStar 2.8s linear infinite', glow:'rgba(251,191,36,.35)' },
+    { icon:'🦁', title:'ברוכים הבאים', sub:'היום צוברים כוכבים באווירת הרפתקה', bg:'linear-gradient(180deg,#eff6ff,#fef3c7)', anim:'lionBounce 2.2s ease-in-out infinite', glow:'rgba(59,130,246,.25)' },
+    { icon:'🎁', title:'זמן לפרסים', sub:'משימות, פרסים והמון הפתעות', bg:'linear-gradient(180deg,#fff1f2,#fef3c7)', anim:'giftPulse 2.1s ease-in-out infinite', glow:'rgba(244,114,182,.28)' },
+    { icon:'🚀', title:'ממריאים לכוכבים', sub:'כל כניסה מתחילה מסע חדש', bg:'linear-gradient(180deg,#eef2ff,#dbeafe)', anim:'rocketFloat 2.4s ease-in-out infinite', glow:'rgba(99,102,241,.28)' },
+    { icon:'🌈', title:'עולם של צבעים', sub:'כל ילד והכפתור המיוחד שלו', bg:'linear-gradient(180deg,#fdf2f8,#ede9fe)', anim:'rainbowPulse 2.5s ease-in-out infinite', glow:'rgba(236,72,153,.26)' }
+  ];
+  var v = variants[Math.floor(Math.random() * variants.length)];
+  var mini = ['✨','🌟','💫','⭐','🎈','🎉'];
+  var floating = mini.sort(function(){ return Math.random() - 0.5; }).slice(0,5).map(function(icon,idx){
+    return `<span style="font-size:${24 + idx*2}px; animation:floaty ${2 + idx*0.18}s ease-in-out infinite; animation-delay:${idx*0.12}s">${icon}</span>`;
+  }).join('');
+  document.getElementById("app").innerHTML = `<div class="hero"><div class="card app-shimmer splash-card" style="min-height:340px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:${v.bg}; position:relative; overflow:hidden;"><div class="splash-orb splash-orb-a"></div><div class="splash-orb splash-orb-b"></div><div style="font-size:92px; animation:${v.anim}; filter:drop-shadow(0 10px 22px ${v.glow});">${v.icon}</div><div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px; animation:fadeRise .7s ease both;">${v.title}</div><div style="font-size:20px; font-weight:700; color:#7c2d12; margin-top:8px; animation:fadeRise .9s ease both;">${v.sub}</div><div class="floating-icons" style="margin-top:18px">${floating}</div><div onclick="adminVersionTap()" style="font-size:20px; font-weight:700; color:#7c2d12; margin-top:14px; cursor:pointer;">גרסה ${APP_VERSION}</div></div></div>`;
+  setTimeout(home, 2600);
 }
 function login(role){
   document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>${parentLabel(role)}</h2><input id="pass" type="password" placeholder="הכנס סיסמה"><br><button onclick="checkLogin('${role}')">כניסה</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
 }
-function checkLogin(role){
+async function checkLogin(role){
   var pass = document.getElementById("pass").value;
-  if(role === "father" && pass === MASTER_PASSWORD){ masterView(); return; }
+  var passHash = await sha256Hex(pass || "");
+  if(role === "father" && passHash === MASTER_PASSWORD_HASH){ masterView(); return; }
   if(pass !== PASSWORDS[role]){ appAlert(funnyWrongPassword()); return; }
   parent(role);
 }
@@ -1387,6 +1429,10 @@ function renderShopEditor(){
   return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#ecfdf5);"><h3 style="margin-top:0">ניהול חנות פרסים משותפת</h3><input id="shopName" placeholder="שם הפרס" style="width:90%;"><input id="shopPrice" type="number" placeholder="מחיר בכוכבים" style="width:90%;"><br><button class="shop" onclick="addShopItem()">הוסף פרס</button><div style="margin-top:10px; text-align:right;">${APP_SETTINGS.sharedShop.length ? APP_SETTINGS.sharedShop.map((item,index)=>`<div class="shop-line"><div><strong>${item.name}</strong> • ${item.price} כוכבים</div><button class="danger mini" onclick="removeShopItem(${index})">מחק</button></div>`).join('') : '<div class="small">אין פרסים בחנות עדיין</div>'}</div></div>`;
 }
 
+function toggleMasterPasswords(){
+  MASTER_PASSWORDS_VISIBLE = !MASTER_PASSWORDS_VISIBLE;
+  if(user && isMasterParent(user)) parent(user);
+}
 function renderMasterPasswordsManager(){
   if(!isMasterParent(user)) return '';
   var parentRows = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
@@ -1396,7 +1442,7 @@ function renderMasterPasswordsManager(){
   var childRows = Object.keys(APP_SETTINGS.childrenDirectory).map(function(childId){
     return `<div class="task-line"><div><strong>${childEmoji(childId)} ${childLabel(childId)}</strong><div class="small">${childId}</div></div><div style="min-width:220px"><div class="small">סיסמה נוכחית: <strong>${CHILD_PASSWORDS[childId] || ''}</strong></div><input id="masterChildPass_${childId}" placeholder="סיסמה חדשה"><button class="mini" onclick="masterChangeChildPassword('${childId}')">שמור</button></div></div>`;
   }).join('');
-  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">🔐 הצג סיסמאות וניהול מלא</h3><div class="small">רק הורה שמוגדר כמאסטר יכול לראות ולשנות כאן את כל הסיסמאות</div><div style="margin-top:10px">${parentRows || '<div class="small">אין הורים</div>'}<hr>${childRows || '<div class="small">אין ילדים</div>'}</div></div>`;
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><h3 style="margin:0">🔐 ניהול סיסמאות מלא</h3><div class="small">רק הורה שמוגדר כמאסטר יכול לראות ולשנות כאן את כל הסיסמאות</div></div><button onclick="toggleMasterPasswords()">${MASTER_PASSWORDS_VISIBLE ? 'הסתר סיסמאות' : 'הצג סיסמאות'}</button></div>${MASTER_PASSWORDS_VISIBLE ? `<div style="margin-top:10px">${parentRows || '<div class="small">אין הורים</div>'}<hr>${childRows || '<div class="small">אין ילדים</div>'}</div>` : `<div class="small" style="margin-top:12px">הסיסמאות מוסתרות כרגע</div>`}</div>`;
 }
 async function masterChangeParentPassword(parentId){
   if(!isMasterParent(user)) return;
