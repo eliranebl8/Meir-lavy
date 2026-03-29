@@ -518,7 +518,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.6.2";
+var APP_VERSION = "2.6.3";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -548,6 +548,104 @@ var FCM_PUBLIC_VAPID_KEY = "BDiMO0iSXqB37kzb1P0Vnpis8NuTHsRWg84OJJLIjDVbUclG1WxP
 var messaging = null;
 var FCM_TOKEN = localStorage.getItem('starsFcmToken') || '';
 var FCM_LAST_SAVED_TOKEN = localStorage.getItem('starsFcmSavedToken') || '';
+
+var LAST_PUSH_DEBUG = '';
+
+async function registerMessagingServiceWorker(){
+  if(!('serviceWorker' in navigator)) throw new Error('serviceWorker_not_supported');
+  var candidates = [
+    './firebase-messaging-sw-github.js',
+    './firebase-messaging-sw.js'
+  ];
+  var lastError = null;
+  for(var i=0;i<candidates.length;i++){
+    try{
+      var reg = await navigator.serviceWorker.register(candidates[i]);
+      return reg;
+    }catch(err){
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('sw_register_failed');
+}
+async function cleanupClientTokensFromFirestore(){
+  try{
+    var batch = db.batch();
+    var removed = 0;
+    if(FCM_TOKEN){
+      try{
+        batch.delete(db.collection('fcm_tokens').doc(FCM_TOKEN));
+        removed++;
+      }catch(e){}
+    }
+    try{
+      var snap = await db.collection('fcm_tokens').where('clientInstanceId','==',CLIENT_INSTANCE_ID).get();
+      snap.forEach(function(doc){
+        batch.delete(doc.ref);
+        removed++;
+      });
+    }catch(e){}
+    if(removed){
+      await batch.commit();
+    }
+  }catch(e){
+    console.log('cleanupClientTokensFromFirestore error', e);
+  }
+}
+async function collectPushDiagnostics(){
+  var info = {
+    permission: notificationsSupported() ? Notification.permission : 'unsupported',
+    canUseFcmPush: canUseFcmPush(),
+    clientInstanceId: CLIENT_INSTANCE_ID,
+    storedToken: FCM_TOKEN || '',
+    savedToken: FCM_LAST_SAVED_TOKEN || ''
+  };
+  try{
+    if('serviceWorker' in navigator){
+      var regs = await navigator.serviceWorker.getRegistrations();
+      info.serviceWorkers = regs.map(function(reg){
+        return (reg.active && reg.active.scriptURL) || (reg.installing && reg.installing.scriptURL) || (reg.waiting && reg.waiting.scriptURL) || 'unknown_sw';
+      });
+    } else {
+      info.serviceWorkers = [];
+    }
+  }catch(e){
+    info.serviceWorkersError = String(e && e.message || e);
+  }
+  try{
+    if(canUseFcmPush()){
+      if(!messaging) messaging = firebase.messaging();
+      var registration = await registerMessagingServiceWorker();
+      var token = await messaging.getToken({
+        vapidKey: FCM_PUBLIC_VAPID_KEY,
+        serviceWorkerRegistration: registration
+      });
+      info.currentToken = token || '';
+      if(token){
+        FCM_TOKEN = token;
+        localStorage.setItem('starsFcmToken', token);
+      }
+    }
+  }catch(e){
+    info.getTokenError = String(e && e.message || e);
+  }
+  try{
+    if(FCM_TOKEN){
+      var tokenDoc = await db.collection('fcm_tokens').doc(FCM_TOKEN).get();
+      info.tokenDocExists = tokenDoc.exists;
+    }
+    var q = await db.collection('fcm_tokens').where('clientInstanceId','==',CLIENT_INSTANCE_ID).get();
+    info.tokensForClient = q.size;
+  }catch(e){
+    info.firestoreTokenError = String(e && e.message || e);
+  }
+  LAST_PUSH_DEBUG = JSON.stringify(info, null, 2);
+  return info;
+}
+async function showPushDiagnostics(){
+  var info = await collectPushDiagnostics();
+  appAlert(LAST_PUSH_DEBUG, 'אבחון פוש');
+}
 
 function notificationsSupported(){
   return typeof Notification !== 'undefined';
@@ -590,7 +688,7 @@ async function ensurePushSetup(){
   if(!canUseFcmPush()) return;
   try{
     messaging = firebase.messaging();
-    var registration = await navigator.serviceWorker.register('./firebase-messaging-sw-github.js');
+    var registration = await registerMessagingServiceWorker();
     if(Notification.permission === 'granted'){
       await registerFcmToken(registration);
     }
@@ -612,7 +710,7 @@ async function requestTruePushNotifications(){
   try {
     var permission = await Notification.requestPermission();
     if(permission === 'granted'){
-      var registration = await navigator.serviceWorker.register('./firebase-messaging-sw-github.js');
+      var registration = await registerMessagingServiceWorker();
       await registerFcmToken(registration);
       showToast('התראות פוש הופעלו בהצלחה 🔔');
     } else {
@@ -631,10 +729,16 @@ async function disableTruePushNotifications(){
     }
     if(!messaging) messaging = firebase.messaging();
     var token = FCM_TOKEN || localStorage.getItem('starsFcmToken') || '';
+    var deletedFromFirebase = false;
     if(token){
-      try { await messaging.deleteToken(token); } catch(e){}
-      try { await db.collection('fcm_tokens').doc(token).delete(); } catch(e){}
+      try {
+        await messaging.deleteToken(token);
+        deletedFromFirebase = true;
+      } catch(e){
+        console.log('deleteToken error', e);
+      }
     }
+    await cleanupClientTokensFromFirestore();
     FCM_TOKEN = '';
     FCM_LAST_SAVED_TOKEN = '';
     localStorage.removeItem('starsFcmToken');
@@ -643,21 +747,25 @@ async function disableTruePushNotifications(){
       var regs = await navigator.serviceWorker.getRegistrations();
       for(var i=0;i<regs.length;i++){
         try{
-          if((regs[i].active && regs[i].active.scriptURL || '').indexOf('firebase-messaging-sw-github.js') !== -1){
+          var url = ((regs[i].active && regs[i].active.scriptURL) || (regs[i].waiting && regs[i].waiting.scriptURL) || (regs[i].installing && regs[i].installing.scriptURL) || '');
+          if(url.indexOf('firebase-messaging-sw-github.js') !== -1 || url.indexOf('firebase-messaging-sw.js') !== -1){
             await regs[i].unregister();
           }
         }catch(e){}
       }
     } catch(e){}
-    showToast('התראות פוש בוטלו במכשיר הזה 🔕');
+    showToast('המכשיר הזה נותק מהפוש 🔕');
     home();
   } catch(e){
-    appAlert('לא הצלחתי לבטל את ההתראות במכשיר הזה');
+    console.log('disableTruePushNotifications error', e);
+    appAlert('לא הצלחתי לבטל את ההתראות במכשיר הזה\n' + String(e && e.message || e));
   }
 }
 async function sendTestPushNotification(){
-  await pushAppNotification('בדיקת פוש', 'זאת הודעת בדיקה מאפליקציית הכוכבים');
+  var info = await collectPushDiagnostics();
+  await pushAppNotification('בדיקת פוש', 'זאת הודעת בדיקה מאפליקציית הכוכבים • ' + nowText());
   showToast('נשלחה בקשת בדיקת פוש 🚀');
+  setTimeout(function(){ console.log('PUSH DEBUG', info); }, 50);
 }
 async function pushAppNotification(title, body){
   try {
@@ -1378,6 +1486,7 @@ function home(){
             ${shouldShowNotificationPrompt() ? `<button onclick="requestTruePushNotifications()">אפשר התראות</button>` : ``}
             <button class="shop" onclick="sendTestPushNotification()">בדוק פוש</button>
             <button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>
+            <button class="mini father" onclick="showPushDiagnostics()">אבחון פוש</button>
           </div>
         </div>
         <div class="grid-buttons">${childButtons}</div>
