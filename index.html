@@ -514,15 +514,11 @@
 firebase.initializeApp({
   apiKey: "AIzaSyDRz4mbNreCeDa6VWRDPbvGND0zWRcB1U4",
   authDomain: "family-stars-app.firebaseapp.com",
-  projectId: "family-stars-app",
-  storageBucket: "family-stars-app.firebasestorage.app",
-  messagingSenderId: "207973882811",
-  appId: "1:207973882811:web:fb9e7108f65b499815c29e",
-  measurementId: "G-EZ436NHFLM"
+  projectId: "family-stars-app"
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.6.1";
+var APP_VERSION = "2.6.2";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -548,118 +544,131 @@ var NOTIFICATION_UNSUBSCRIBE = null;
 var APP_OPENED_AT = Date.now();
 var CLIENT_INSTANCE_ID = localStorage.getItem('starsClientId') || ('client_' + Math.random().toString(36).slice(2));
 localStorage.setItem('starsClientId', CLIENT_INSTANCE_ID);
-
-
+var FCM_PUBLIC_VAPID_KEY = "BDiMO0iSXqB37kzb1P0Vnpis8NuTHsRWg84OJJLIjDVbUclG1WxPy6Kce7L3Olxb9caZwmNErX53M7KlRCrQF74";
 var messaging = null;
-var PUSH_PUBLIC_VAPID_KEY = "BDiMO0iSXqB37kzb1P0Vnpis8NuTHsRWg84OJJLIjDVbUclG1WxPy6Kce7L3Olxb9caZwmNErX53M7KlRCrQF74";
-var PUSH_SW_PATH = "./firebase-messaging-sw.js";
-var PUSH_SUBSCRIPTIONS_COLLECTION = "push_subscriptions";
-var PUSH_ENABLED_KEY = "stars_push_enabled";
-
+var FCM_TOKEN = localStorage.getItem('starsFcmToken') || '';
+var FCM_LAST_SAVED_TOKEN = localStorage.getItem('starsFcmSavedToken') || '';
 
 function notificationsSupported(){
-  return typeof Notification !== 'undefined' && 'serviceWorker' in navigator;
-}
-function pushIsMarkedEnabled(){
-  return localStorage.getItem(PUSH_ENABLED_KEY) === '1';
+  return typeof Notification !== 'undefined';
 }
 function shouldShowNotificationPrompt(){
   return notificationsSupported() && Notification.permission !== 'granted';
 }
-function shouldShowDisableNotifications(){
-  return notificationsSupported() && Notification.permission === 'granted' && pushIsMarkedEnabled();
+function notificationsEnabled(){
+  return notificationsSupported() && Notification.permission === 'granted' && !!FCM_TOKEN;
 }
-async function ensurePushMessaging(){
-  if(!notificationsSupported()) return null;
-  if(messaging) return messaging;
-  try {
-    if(!firebase.messaging.isSupported || !firebase.messaging.isSupported()) return null;
-  } catch(e){}
-  try {
-    messaging = firebase.messaging();
-    return messaging;
-  } catch(e){
-    return null;
-  }
+function canUseFcmPush(){
+  return !!(firebase.messaging && 'serviceWorker' in navigator && notificationsSupported());
 }
-async function upsertPushSubscription(token){
-  if(!token) return;
-  await db.collection(PUSH_SUBSCRIPTIONS_COLLECTION).doc(CLIENT_INSTANCE_ID).set({
-    token: token,
-    clientInstanceId: CLIENT_INSTANCE_ID,
-    updatedAtMillis: Date.now(),
-    updatedAtText: nowText(),
-    userAgent: navigator.userAgent || '',
-    permission: Notification.permission || 'default'
-  }, { merge:true });
-}
-async function registerPushToken(){
-  var m = await ensurePushMessaging();
-  if(!m) return false;
-  try {
-    if(!navigator.serviceWorker) return false;
-    var reg = await navigator.serviceWorker.register(PUSH_SW_PATH);
-    await navigator.serviceWorker.ready;
-    var token = await m.getToken({
-      vapidKey: PUSH_PUBLIC_VAPID_KEY,
-      serviceWorkerRegistration: reg
+async function registerFcmToken(registration){
+  try{
+    if(!messaging) messaging = firebase.messaging();
+    var token = await messaging.getToken({
+      vapidKey: FCM_PUBLIC_VAPID_KEY,
+      serviceWorkerRegistration: registration
     });
-    if(!token) return false;
-    await upsertPushSubscription(token);
-    localStorage.setItem(PUSH_ENABLED_KEY, '1');
-    return true;
-  } catch(e){
-    console.log('registerPushToken error', e);
-    return false;
+    if(!token) return;
+    FCM_TOKEN = token;
+    localStorage.setItem('starsFcmToken', token);
+    if(FCM_LAST_SAVED_TOKEN === token) return;
+    await db.collection('fcm_tokens').doc(token).set({
+      token: token,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      userAgent: navigator.userAgent || '',
+      createdAtMillis: Date.now(),
+      createdAtText: nowText(),
+      active: true
+    }, { merge:true });
+    FCM_LAST_SAVED_TOKEN = token;
+    localStorage.setItem('starsFcmSavedToken', token);
+  }catch(e){
+    console.log('FCM token error', e);
   }
 }
-async function requestBrowserNotifications(){
-  if(!notificationsSupported()){
-    appAlert('הדפדפן הזה לא תומך בהתראות מהאתר');
+async function ensurePushSetup(){
+  if(!canUseFcmPush()) return;
+  try{
+    messaging = firebase.messaging();
+    var registration = await navigator.serviceWorker.register('./firebase-messaging-sw-github.js');
+    if(Notification.permission === 'granted'){
+      await registerFcmToken(registration);
+    }
+    messaging.onMessage(function(payload){
+      try{
+        var n = payload && payload.notification ? payload.notification : {};
+        showToast((n.title || 'התראה') + (n.body ? ' • ' + n.body : ''));
+      }catch(e){}
+    });
+  }catch(e){
+    console.log('FCM setup error', e);
+  }
+}
+async function requestTruePushNotifications(){
+  if(!canUseFcmPush()){
+    appAlert('הדפדפן הזה לא תומך בהתראות פוש מלאות');
     return;
   }
   try {
     var permission = await Notification.requestPermission();
-    if(permission !== 'granted'){
-      appAlert('לא אושרו התראות כרגע');
-      home();
-      return;
-    }
-    var ok = await registerPushToken();
-    if(ok){
-      showToast('ההתראות הופעלו בהצלחה 🔔');
+    if(permission === 'granted'){
+      var registration = await navigator.serviceWorker.register('./firebase-messaging-sw-github.js');
+      await registerFcmToken(registration);
+      showToast('התראות פוש הופעלו בהצלחה 🔔');
     } else {
-      appAlert('אושרו התראות אבל לא הצלחתי לרשום את המכשיר לפוש');
+      appAlert('לא אושרו התראות כרגע');
     }
     home();
   } catch(e){
-    console.log(e);
     appAlert('לא הצלחתי לבקש הרשאת התראות במכשיר הזה');
   }
 }
-async function disableBrowserNotifications(){
+async function disableTruePushNotifications(){
   try {
-    var m = await ensurePushMessaging();
-    if(m){
-      try {
-        var currentToken = await m.getToken({ vapidKey: PUSH_PUBLIC_VAPID_KEY });
-        if(currentToken){
-          try { await m.deleteToken(currentToken); } catch(e){}
-        }
-      } catch(e){}
+    if(!canUseFcmPush()){
+      appAlert('המכשיר הזה לא תומך בניהול התראות פוש');
+      return;
     }
-    try { await db.collection(PUSH_SUBSCRIPTIONS_COLLECTION).doc(CLIENT_INSTANCE_ID).delete(); } catch(e){}
-    localStorage.removeItem(PUSH_ENABLED_KEY);
-    showToast('ההתראות בוטלו במכשיר הזה');
+    if(!messaging) messaging = firebase.messaging();
+    var token = FCM_TOKEN || localStorage.getItem('starsFcmToken') || '';
+    if(token){
+      try { await messaging.deleteToken(token); } catch(e){}
+      try { await db.collection('fcm_tokens').doc(token).delete(); } catch(e){}
+    }
+    FCM_TOKEN = '';
+    FCM_LAST_SAVED_TOKEN = '';
+    localStorage.removeItem('starsFcmToken');
+    localStorage.removeItem('starsFcmSavedToken');
+    try {
+      var regs = await navigator.serviceWorker.getRegistrations();
+      for(var i=0;i<regs.length;i++){
+        try{
+          if((regs[i].active && regs[i].active.scriptURL || '').indexOf('firebase-messaging-sw-github.js') !== -1){
+            await regs[i].unregister();
+          }
+        }catch(e){}
+      }
+    } catch(e){}
+    showToast('התראות פוש בוטלו במכשיר הזה 🔕');
+    home();
   } catch(e){
-    console.log(e);
-    appAlert('לא הצלחתי לבטל התראות כרגע');
+    appAlert('לא הצלחתי לבטל את ההתראות במכשיר הזה');
   }
-  home();
+}
+async function sendTestPushNotification(){
+  await pushAppNotification('בדיקת פוש', 'זאת הודעת בדיקה מאפליקציית הכוכבים');
+  showToast('נשלחה בקשת בדיקת פוש 🚀');
 }
 async function pushAppNotification(title, body){
   try {
     await db.collection('app_notifications').add({
+      title: title,
+      body: body,
+      createdAtMillis: Date.now(),
+      createdAtText: nowText(),
+      senderClientId: CLIENT_INSTANCE_ID
+    });
+    await db.collection('notifications').add({
       title: title,
       body: body,
       createdAtMillis: Date.now(),
@@ -1360,7 +1369,17 @@ function home(){
       <div class="card app-shimmer">
         <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
         <div class="small">האפליקציה מחוברת למערכת הניהול החדשה</div>
-        ${shouldShowNotificationPrompt() ? `<div class="notification-card"><div style="font-weight:bold">🔔 קבל התראות מהאפליקציה</div><div class="small" style="margin-top:6px">כדי לקבל התראות על בקשות ואישורים, צריך לאשר התראות בדפדפן.</div><button style="margin-top:8px" onclick="requestBrowserNotifications()">אפשר התראות</button></div>` : shouldShowDisableNotifications() ? `<div class="notification-card"><div style="font-weight:bold">🔔 ההתראות פעילות במכשיר הזה</div><div class="small" style="margin-top:6px">אפשר גם לבטל את קבלת הפושים מהמכשיר הזה.</div><button class="secondary" style="margin-top:8px" onclick="disableBrowserNotifications()">בטל התראות</button></div>` : ``}
+        <div class="notification-card">
+          <div style="font-weight:bold">🔔 ניהול פוש והתראות</div>
+          <div class="small" style="margin-top:6px">
+            ${notificationsEnabled() ? 'התראות פעילות במכשיר הזה' : (shouldShowNotificationPrompt() ? 'כדי לקבל פוש אמיתי גם כשהאתר סגור, צריך לאשר התראות בדפדפן.' : 'אם כבר אישרת בעבר, אפשר לשלוח בדיקת פוש או לנתק את המכשיר הזה מההתראות.')}
+          </div>
+          <div class="grid-buttons" style="margin-top:8px">
+            ${shouldShowNotificationPrompt() ? `<button onclick="requestTruePushNotifications()">אפשר התראות</button>` : ``}
+            <button class="shop" onclick="sendTestPushNotification()">בדוק פוש</button>
+            <button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>
+          </div>
+        </div>
         <div class="grid-buttons">${childButtons}</div>
         ${moreSection}
         ${customSections}
@@ -1785,22 +1804,7 @@ async function saveChildAppearance(child){
 
 async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){appAlert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); appAlert('הסיסמה החדשה נשמרה'); childLogin(child); }
 function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
-(async function start(){
-  try {
-    await ensureSettings();
-    startNotificationListener();
-    if(notificationsSupported() && Notification.permission === 'granted'){
-      registerPushToken().catch(function(){});
-    }
-    if(ADMIN_BOOTSTRAP_MODE){
-      renderAdminPanel();
-    } else {
-      showSplash();
-    }
-  } catch(e) {
-    document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`;
-  }
-})();
+(async function start(){ try { await ensureSettings(); startNotificationListener(); await ensurePushSetup(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
 </script>
 </body>
 </html>
