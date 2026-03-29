@@ -522,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.6.4";
+var APP_VERSION = "2.7.0";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -538,7 +538,8 @@ var APP_SETTINGS = {
   childrenDirectory: {},
   permissionsMatrix: {},
   presetTasks: {},
-  sharedShop: []
+  sharedShop: [],
+  pushMatrix: {}
 };
 var PASSWORDS = {};
 var CHILD_PASSWORDS = {};
@@ -663,6 +664,79 @@ function notificationsEnabled(){
 function canUseFcmPush(){
   return !!(firebase.messaging && 'serviceWorker' in navigator && notificationsSupported());
 }
+
+function createDefaultPushMatrix(){
+  var out = {};
+  Object.keys(APP_SETTINGS.parentsDirectory || {}).forEach(function(parentId){
+    out[parentId] = {};
+    Object.keys(APP_SETTINGS.childrenDirectory || {}).forEach(function(childId){
+      out[parentId][childId] = !!userCanManageChild(parentId, childId);
+    });
+  });
+  return out;
+}
+function normalizePushMatrix(raw){
+  var out = createDefaultPushMatrix();
+  if(!raw || typeof raw !== 'object') return out;
+  Object.keys(out).forEach(function(parentId){
+    var src = raw[parentId] || {};
+    Object.keys(out[parentId]).forEach(function(childId){
+      if(typeof src[childId] === 'boolean') out[parentId][childId] = src[childId];
+    });
+  });
+  return out;
+}
+function parentWantsPushForChild(parentId, childId){
+  return !!(APP_SETTINGS.pushMatrix && APP_SETTINGS.pushMatrix[parentId] && APP_SETTINGS.pushMatrix[parentId][childId]);
+}
+async function syncCurrentTokenProfile(ownerType, ownerId){
+  try{
+    var token = FCM_TOKEN || localStorage.getItem('starsFcmToken') || '';
+    if(!token) return;
+    await db.collection('fcm_tokens').doc(token).set({
+      token: token,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      ownerType: ownerType || '',
+      ownerId: ownerId || '',
+      active: true,
+      updatedAtMillis: Date.now(),
+      updatedAtText: nowText()
+    }, { merge:true });
+  }catch(e){
+    console.log('syncCurrentTokenProfile error', e);
+  }
+}
+async function dispatchPushNotification(opts){
+  opts = opts || {};
+  try{
+    await db.collection('notifications').add({
+      title: opts.title || 'אפליקציית הכוכבים',
+      body: opts.body || '',
+      senderClientId: CLIENT_INSTANCE_ID,
+      targetParents: Array.isArray(opts.targetParents) ? opts.targetParents : [],
+      targetChildren: Array.isArray(opts.targetChildren) ? opts.targetChildren : [],
+      createdAtMillis: Date.now(),
+      createdAtText: nowText()
+    });
+  }catch(e){
+    console.log('dispatchPushNotification error', e);
+  }
+}
+async function notifyParentAction(parentId, childId, title, body, sendToChild){
+  var targetParents = [];
+  var targetChildren = [];
+  if(parentWantsPushForChild(parentId, childId)) targetParents.push(parentId);
+  if(sendToChild && parentWantsPushForChild(parentId, childId)) targetChildren.push(childId);
+  if(!targetParents.length && !targetChildren.length) return;
+  await dispatchPushNotification({ title:title, body:body, targetParents:targetParents, targetChildren:targetChildren });
+}
+async function notifyChildAction(childId, title, body){
+  var targetParents = Object.keys(APP_SETTINGS.parentsDirectory).filter(function(parentId){
+    return parentWantsPushForChild(parentId, childId);
+  });
+  if(!targetParents.length) return;
+  await dispatchPushNotification({ title:title, body:body, targetParents:targetParents, targetChildren:[] });
+}
 async function registerFcmToken(registration){
   try{
     if(!messaging) messaging = firebase.messaging();
@@ -716,6 +790,7 @@ async function requestTruePushNotifications(){
     if(permission === 'granted'){
       var registration = await registerMessagingServiceWorker();
       await registerFcmToken(registration);
+      if(user){ await syncCurrentTokenProfile('parent', user); }
       showToast('התראות פוש הופעלו בהצלחה 🔔');
     } else {
       appAlert('לא אושרו התראות כרגע');
@@ -771,23 +846,14 @@ async function sendTestPushNotification(){
   showToast('נשלחה בקשת בדיקת פוש 🚀');
   setTimeout(function(){ console.log('PUSH DEBUG', info); }, 50);
 }
-async function pushAppNotification(title, body){
-  try {
-    await db.collection('app_notifications').add({
-      title: title,
-      body: body,
-      createdAtMillis: Date.now(),
-      createdAtText: nowText(),
-      senderClientId: CLIENT_INSTANCE_ID
-    });
-    await db.collection('notifications').add({
-      title: title,
-      body: body,
-      createdAtMillis: Date.now(),
-      createdAtText: nowText(),
-      senderClientId: CLIENT_INSTANCE_ID
-    });
-  } catch(e){}
+async function pushAppNotification(title, body, opts){
+  opts = opts || {};
+  await dispatchPushNotification({
+    title: title,
+    body: body,
+    targetParents: Array.isArray(opts.targetParents) ? opts.targetParents : [],
+    targetChildren: Array.isArray(opts.targetChildren) ? opts.targetChildren : []
+  });
 }
 function hasSeenNotification(id){
   return localStorage.getItem('stars_seen_' + id) === '1';
@@ -795,35 +861,7 @@ function hasSeenNotification(id){
 function markNotificationSeen(id){
   localStorage.setItem('stars_seen_' + id, '1');
 }
-function startNotificationListener(){
-  if(NOTIFICATION_UNSUBSCRIBE) return;
-  NOTIFICATION_UNSUBSCRIBE = db.collection('app_notifications')
-    .orderBy('createdAtMillis', 'desc')
-    .limit(25)
-    .onSnapshot(function(snapshot){
-      snapshot.docChanges().forEach(function(change){
-        if(change.type !== 'added') return;
-        var doc = change.doc;
-        var data = doc.data() || {};
-        if(hasSeenNotification(doc.id)) return;
-        markNotificationSeen(doc.id);
-        if((data.createdAtMillis || 0) < APP_OPENED_AT - 3000) return;
-        if(data.senderClientId === CLIENT_INSTANCE_ID) return;
-        if(notificationsSupported() && Notification.permission === 'granted'){
-          try {
-            new Notification(data.title || 'אפליקציית הכוכבים', {
-              body: data.body || '',
-              tag: doc.id
-            });
-          } catch(e){
-            showToast((data.title || 'התראה') + ' • ' + (data.body || ''));
-          }
-        } else {
-          showToast((data.title || 'התראה') + ' • ' + (data.body || ''));
-        }
-      });
-    }, function(){});
-}
+function startNotificationListener(){ return; }
 
 async function sha256Hex(str){
   var data = new TextEncoder().encode(str);
@@ -1192,6 +1230,31 @@ function renderAdminPasswordsHtml(){
   </div>`;
 }
 
+
+function renderAdminPushRulesHtml(){
+  var parentIds = Object.keys(APP_SETTINGS.parentsDirectory);
+  var childIds = Object.keys(APP_SETTINGS.childrenDirectory);
+  if(!parentIds.length || !childIds.length) return '<div class="small">צריך לפחות הורה אחד וילד אחד</div>';
+  var header = `<tr><th style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right">הורה \/ ילד</th>${childIds.map(function(childId){ return `<th style="padding:10px;border-bottom:1px solid #e5e7eb">${childLabel(childId)}</th>`; }).join('')}</tr>`;
+  var rows = parentIds.map(function(parentId){
+    return `<tr><td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right"><strong>${parentConfig(parentId).emoji} ${parentLabel(parentId)}</strong><div class="small">סימון פעיל = ההורה יקבל פושים מהילד וגם יוכל לשלוח אליו פושים</div></td>${childIds.map(function(childId){ var checked = parentWantsPushForChild(parentId, childId); return `<td style="padding:10px;border-bottom:1px solid #e5e7eb"><input type="checkbox" id="adminPush_${parentId}_${childId}" ${checked ? 'checked' : ''}></td>`; }).join('')}</tr>`;
+  }).join('');
+  return `<div style="overflow:auto"><table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden">${header}${rows}</table></div>`;
+}
+async function saveAdminPushRules(){
+  APP_SETTINGS.pushMatrix = APP_SETTINGS.pushMatrix || {};
+  Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(parentId){
+    APP_SETTINGS.pushMatrix[parentId] = APP_SETTINGS.pushMatrix[parentId] || {};
+    Object.keys(APP_SETTINGS.childrenDirectory).forEach(function(childId){
+      var el = document.getElementById('adminPush_' + parentId + '_' + childId);
+      APP_SETTINGS.pushMatrix[parentId][childId] = !!(el && el.checked);
+    });
+  });
+  await saveAppSettings();
+  appAlert('מטריצת הפוש נשמרה');
+  renderAdminPanel();
+}
+
 function renderAdminPanel(){
   document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:1180px"><h2>ממשק ניהול מתקדם</h2><div class="small">כאן אפשר לערוך ילדים, הורים, סיסמאות, צבעים, אייקונים, קבוצות והרשאות</div>
     ${renderAdminPanelPasswordManager()}
@@ -1238,7 +1301,7 @@ function renderAdminPanel(){
       </div>
     </div>
     <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#fff7ed)"><h3 style="margin-top:0">עריכת ילדים</h3>${renderAdminChildrenEditorHtml()}</div>
-    <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f0fdf4)"><h3 style="margin-top:0">הרשאות מסודרות</h3><div class="small">כל שורה היא ילד וכל עמודה היא הורה. סמן למי מותר לנהל כל ילד.</div>${renderAdminPermissionsHtml()}<div style="margin-top:12px"><button onclick="saveAdminPermissions()">שמור הרשאות</button></div></div>
+    <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f0fdf4)"><h3 style="margin-top:0">הרשאות מסודרות</h3><div class="small">כל שורה היא ילד וכל עמודה היא הורה. סמן למי מותר לנהל כל ילד.</div>${renderAdminPermissionsHtml()}<div style="margin-top:12px"><button onclick="saveAdminPermissions()">שמור הרשאות</button></div></div><div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#eef6ff)"><h3 style="margin-top:0">מטריצת פוש הורה ↔ ילד</h3><div class="small">כאן קובעים אילו ילדים רואים את הפושים של כל הורה, ואילו פושים מכל ילד מגיעים לאותו הורה.</div>${renderAdminPushRulesHtml()}<div style="margin-top:12px"><button onclick="saveAdminPushRules()">שמור מטריצת פוש</button></div></div>
     <button class="secondary" onclick="home()">חזרה</button>
   </div>`;
 }
@@ -1314,6 +1377,7 @@ async function ensureSettings(){
     APP_SETTINGS.permissionsMatrix = {};
     APP_SETTINGS.presetTasks = {};
     APP_SETTINGS.sharedShop = Array.isArray(data.sharedShop) ? data.sharedShop : [];
+    APP_SETTINGS.pushMatrix = {};
     PASSWORDS = {};
     CHILD_PASSWORDS = {};
     await ref.set({
@@ -1322,7 +1386,8 @@ async function ensureSettings(){
       childrenDirectory: APP_SETTINGS.childrenDirectory,
       permissionsMatrix: APP_SETTINGS.permissionsMatrix,
       presetTasks: APP_SETTINGS.presetTasks,
-      sharedShop: APP_SETTINGS.sharedShop
+      sharedShop: APP_SETTINGS.sharedShop,
+      pushMatrix: APP_SETTINGS.pushMatrix
     }, { merge:true });
     return;
   }
@@ -1354,6 +1419,7 @@ async function ensureSettings(){
   Object.keys(APP_SETTINGS.childrenDirectory).forEach(function(k){ CHILD_PASSWORDS[k] = APP_SETTINGS.childrenDirectory[k].password || ""; });
   APP_SETTINGS.presetTasks = normalizePresetTasks(data.presetTasks);
   APP_SETTINGS.sharedShop = Array.isArray(data.sharedShop) ? data.sharedShop : [];
+  APP_SETTINGS.pushMatrix = normalizePushMatrix(data.pushMatrix);
   Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(k){
     if(!SELECTED_PARENT_CHILD[k]) {
       var firstAllowed = Object.keys(APP_SETTINGS.childrenDirectory).find(function(childId){ return userCanManageChild(k, childId); });
@@ -1366,7 +1432,8 @@ async function ensureSettings(){
     childrenDirectory: APP_SETTINGS.childrenDirectory,
     permissionsMatrix: APP_SETTINGS.permissionsMatrix,
     presetTasks: APP_SETTINGS.presetTasks,
-    sharedShop: APP_SETTINGS.sharedShop
+    sharedShop: APP_SETTINGS.sharedShop,
+    pushMatrix: APP_SETTINGS.pushMatrix
   }, { merge:true });
 }
 async function saveAppSettings(){
@@ -1375,7 +1442,8 @@ async function saveAppSettings(){
     childrenDirectory: APP_SETTINGS.childrenDirectory,
     permissionsMatrix: APP_SETTINGS.permissionsMatrix,
     presetTasks: APP_SETTINGS.presetTasks,
-    sharedShop: APP_SETTINGS.sharedShop
+    sharedShop: APP_SETTINGS.sharedShop,
+    pushMatrix: APP_SETTINGS.pushMatrix
   }, { merge:true });
 }
 function migrateChildData(data){
@@ -1481,18 +1549,6 @@ function home(){
       <div class="card app-shimmer">
         <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
         <div class="small">האפליקציה מחוברת למערכת הניהול החדשה</div>
-        <div class="notification-card">
-          <div style="font-weight:bold">🔔 ניהול פוש והתראות</div>
-          <div class="small" style="margin-top:6px">
-            ${notificationsEnabled() ? 'התראות פעילות במכשיר הזה' : (shouldShowNotificationPrompt() ? 'כדי לקבל פוש אמיתי גם כשהאתר סגור, צריך לאשר התראות בדפדפן.' : 'אם כבר אישרת בעבר, אפשר לשלוח בדיקת פוש או לנתק את המכשיר הזה מההתראות.')}
-          </div>
-          <div class="grid-buttons" style="margin-top:8px">
-            ${shouldShowNotificationPrompt() ? `<button onclick="requestTruePushNotifications()">אפשר התראות</button>` : ``}
-            <button class="shop" onclick="sendTestPushNotification()">בדוק פוש</button>
-            <button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>
-            <button class="mini father" onclick="showPushDiagnostics()">אבחון פוש</button>
-          </div>
-        </div>
         <div class="grid-buttons">${childButtons}</div>
         ${moreSection}
         ${customSections}
@@ -1628,6 +1684,7 @@ async function child(id){
   if(emojiInput) emojiInput.addEventListener('input', refreshKidPreview);
   if(colorInput) colorInput.addEventListener('input', refreshKidPreview);
   refreshKidPreview();
+  syncCurrentTokenProfile('child', id);
 }
 async function requestQuickTask(childId, role, taskIndex){
   var task = APP_SETTINGS.presetTasks[childId]?.[role]?.[taskIndex];
@@ -1638,7 +1695,7 @@ async function requestQuickTask(childId, role, taskIndex){
   data.logs.unshift({ parent:role, action:'task_pending', amount:safeNumber(task.stars), note:task.name, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
-  await pushAppNotification('בקשת משימה חדשה', childLabel(childId) + ' שלח משימה לבדיקה: ' + task.name);
+  await notifyChildAction(childId, 'בקשת משימה חדשה', childLabel(childId) + ' שלח משימה לבדיקה: ' + task.name);
   appAlert('המשימה נשלחה לבדיקה ✅');
   child(childId);
 }
@@ -1653,7 +1710,7 @@ async function requestShopPurchase(childId, itemIndex){
   data.logs.unshift({ parent:user||'mother', action:'shop_pending', amount:safeNumber(item.price), note:'בקשה למימוש פרס: '+item.name, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
-  await pushAppNotification('בקשת מימוש פרס', childLabel(childId) + ' ביקש לממש את הפרס: ' + item.name);
+  await notifyChildAction(childId, 'בקשת מימוש פרס', childLabel(childId) + ' ביקש לממש את הפרס: ' + item.name);
   appAlert('הבקשה נשלחה לאישור 🎁');
   child(childId);
 }
@@ -1679,7 +1736,7 @@ async function requestCustomGift(childId){
   data.logs.unshift({ parent:'child', action:'custom_request_pending', amount:price, note:'בקשה אישית: ' + itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
-  await pushAppNotification('בקשת מתנה אישית', childLabel(childId) + ' ביקש: ' + itemName + ' תמורת ' + price + ' כוכבים');
+  await notifyChildAction(childId, 'בקשת מתנה אישית', childLabel(childId) + ' ביקש: ' + itemName + ' תמורת ' + price + ' כוכבים');
   appAlert('הבקשה נשלחה להורים 🎁');
   child(childId);
 }
@@ -1695,7 +1752,7 @@ async function approvePendingTask(childId, taskId){
   data.logs.unshift({ parent:pt.role, action:'task_approved', amount:safeNumber(pt.stars), note:pt.taskName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await pushAppNotification('משימה אושרה', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את המשימה: ' + pt.taskName);
+  await notifyParentAction(user, childId, 'משימה אושרה', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את המשימה: ' + pt.taskName, true);
   appAlert('המשימה אושרה 🌟');
   parent(user);
 }
@@ -1709,7 +1766,7 @@ async function rejectPendingTask(childId, taskId){
   data.logs.unshift({ parent:pt.role, action:'task_rejected', amount:safeNumber(pt.stars), note:pt.taskName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await pushAppNotification('משימה נדחתה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את המשימה: ' + pt.taskName);
+  await notifyParentAction(user, childId, 'משימה נדחתה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את המשימה: ' + pt.taskName, true);
   appAlert('המשימה נדחתה');
   parent(user);
 }
@@ -1728,7 +1785,7 @@ async function approvePendingShop(childId, requestId){
   data.logs.unshift({ parent:user, action:'shop_approved', amount:price, note:'אושר מימוש פרס: '+req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await pushAppNotification('פרס אושר', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את הפרס: ' + req.itemName);
+  await notifyParentAction(user, childId, 'פרס אושר', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את הפרס: ' + req.itemName, true);
   appAlert('הפרס אושר 🎉');
   parent(user);
 }
@@ -1742,7 +1799,7 @@ async function rejectPendingShop(childId, requestId){
   data.logs.unshift({ parent:user, action:'shop_rejected', amount:safeNumber(req.price), note:'נדחתה בקשת פרס: '+req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await pushAppNotification('פרס נדחה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את הפרס: ' + req.itemName);
+  await notifyParentAction(user, childId, 'פרס נדחה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את הפרס: ' + req.itemName, true);
   appAlert('הבקשה נדחתה');
   parent(user);
 }
@@ -1762,7 +1819,7 @@ async function approvePendingCustomGift(childId, requestId){
   data.logs.unshift({ parent:user, action:'custom_request_approved', amount:price, note:'אושרה בקשה אישית: ' + req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await pushAppNotification('מתנה אישית אושרה', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את הבקשה: ' + req.itemName);
+  await notifyParentAction(user, childId, 'מתנה אישית אושרה', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את הבקשה: ' + req.itemName, true);
   appAlert('הבקשה האישית אושרה 🎉');
   parent(user);
 }
@@ -1785,7 +1842,7 @@ async function rejectPendingCustomGift(childId, requestId){
   }
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await pushAppNotification(allRefused ? 'בקשה אישית נדחתה' : 'סירוב לבקשה אישית', allRefused ? ('כל ההורים סירבו ל' + childLabel(childId) + ' על: ' + req.itemName) : (parentLabel(user) + ' סירב ל' + childLabel(childId) + ' על: ' + req.itemName));
+  await notifyParentAction(user, childId, allRefused ? 'בקשה אישית נדחתה' : 'סירוב לבקשה אישית', allRefused ? ('כל ההורים סירבו ל' + childLabel(childId) + ' על: ' + req.itemName) : (parentLabel(user) + ' סירב ל' + childLabel(childId) + ' על: ' + req.itemName), true);
   appAlert(allRefused ? 'כל ההורים סירבו לבקשה' : 'הסירוב נשמר, מחכים לשאר ההורים');
   parent(user);
 }
@@ -1822,6 +1879,34 @@ function toggleMasterPasswords(){
   MASTER_PASSWORDS_VISIBLE = !MASTER_PASSWORDS_VISIBLE;
   if(user && isMasterParent(user)) parent(user);
 }
+
+function renderPushManager(role){
+  var rows = Object.keys(APP_SETTINGS.childrenDirectory).filter(function(childId){
+    return userCanManageChild(role, childId);
+  }).map(function(childId){
+    var checked = parentWantsPushForChild(role, childId);
+    return `<div class="task-line"><div><strong>${childEmoji(childId)} ${childLabel(childId)}</strong><div class="small">כשאתה פועל על הילד הזה, אפשר לשלוח אליו פוש ולקבל ממנו פושים</div></div><label style="display:inline-flex;align-items:center;gap:8px"><input type="checkbox" id="pushRule_${role}_${childId}" ${checked ? 'checked' : ''}> פעיל</label></div>`;
+  }).join('') || '<div class="small">אין ילדים זמינים להגדרה</div>';
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#eef6ff);"><h3 style="margin-top:0">🔔 התראות ופוש</h3><div class="small">כאן ${parentLabel(role)} מגדיר מאילו ילדים יקבל פושים ולאילו ילדים יישלחו פושים כשיבחר "שלח פוש לילד" בפעולות שלו.</div><div style="margin-top:10px">${rows}</div><div style="margin-top:10px"><button onclick="saveParentPushSettings('${role}')">שמור הגדרות פוש</button>${notificationsEnabled() ? `<button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>` : `<button onclick="requestTruePushNotifications()">אפשר התראות במכשיר הזה</button>`}</div></div>`;
+}
+async function saveParentPushSettings(role){
+  APP_SETTINGS.pushMatrix = APP_SETTINGS.pushMatrix || {};
+  APP_SETTINGS.pushMatrix[role] = APP_SETTINGS.pushMatrix[role] || {};
+  Object.keys(APP_SETTINGS.childrenDirectory).forEach(function(childId){
+    if(!userCanManageChild(role, childId)) return;
+    var el = document.getElementById('pushRule_' + role + '_' + childId);
+    APP_SETTINGS.pushMatrix[role][childId] = !!(el && el.checked);
+  });
+  await saveAppSettings();
+  await syncCurrentTokenProfile('parent', role);
+  appAlert('הגדרות הפוש נשמרו');
+  parent(role);
+}
+function shouldSendPushToSelectedChild(){
+  var el = document.getElementById('pushToSelectedChild');
+  return !!(el && el.checked);
+}
+
 function renderMasterPasswordsManager(){
   if(!isMasterParent(user)) return '';
   var parentRows = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
@@ -1860,8 +1945,8 @@ function parent(role){
   if(!ids.length){ appAlert('אין לך כרגע ילדים מורשים'); home(); return; }
   if(!SELECTED_PARENT_CHILD[role] || !ids.includes(SELECTED_PARENT_CHILD[role])) SELECTED_PARENT_CHILD[role] = ids[0];
   var childRadioOptions = ids.map(function(childId){ return `<label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="${childId}" ${SELECTED_PARENT_CHILD[role]===childId?'checked':''} onchange="setSelectedChild('${role}','${childId}')"> ${childLabel(childId)}</label>`; }).join('');
-  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
-  loadParentSummary(role); loadPendingApprovals(role);
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><div class="small" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:8px"><input id="pushToSelectedChild" type="checkbox" checked> שלח פוש לילד הזה אם ההורה סימן אותו במטריצת הפוש</label></div><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}${renderPushManager(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
+  loadParentSummary(role); loadPendingApprovals(role); syncCurrentTokenProfile('parent', role);
 }
 async function addPresetTask(role){
   var name=document.getElementById('taskName').value.trim();
@@ -1886,7 +1971,9 @@ async function change(type){
   data.scores[user] = type==='add' ? safeNumber(data.scores[user])+amount : Math.max(0, safeNumber(data.scores[user])-amount);
   data.logs.unshift({parent:user, action:type, amount:amount, note:note, createdAtText:nowText(), createdAtMillis:Date.now()});
   data.logs = data.logs.slice(0,100);
-  await saveChildData(child,data); appAlert('עודכן'); parent(user);
+  await saveChildData(child,data);
+  await notifyParentAction(user, child, type==='add' ? 'כוכבים נוספו' : 'כוכבים ירדו', parentLabel(user) + (type==='add' ? ' נתן ל' : ' הוריד ל') + childLabel(child) + ' ' + amount + ' כוכבים' + (note ? ' • ' + note : ''), shouldSendPushToSelectedChild());
+  appAlert('עודכן'); parent(user);
 }
 async function saveTarget(){
   var child=getSelectedChild(); var target=Number(document.getElementById('target').value); var reward=document.getElementById('reward').value;
@@ -1894,13 +1981,17 @@ async function saveTarget(){
   var data=await getChildData(child); data.targets[user]=target; data.rewards[user]=reward;
   data.logs.unshift({parent:user, action:'target', note:'יעד: '+target+' | מתנה: '+reward, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
-  await saveChildData(child,data); appAlert('נשמר'); parent(user);
+  await saveChildData(child,data);
+  await notifyParentAction(user, child, 'יעד עודכן', parentLabel(user) + ' עדכן ל' + childLabel(child) + ' יעד חדש: ' + target + (reward ? ' • פרס: ' + reward : ''), shouldSendPushToSelectedChild());
+  appAlert('נשמר'); parent(user);
 }
 async function redeem(){
   var child=getSelectedChild(); var data=await getChildData(child); data.scores[user]=0;
   data.logs.unshift({parent:user, action:'redeem', note:'בוצע מימוש פרס ואיפוס המסלול', createdAtText:nowText(), createdAtMillis:Date.now()});
   data.logs = data.logs.slice(0,100);
-  await saveChildData(child,data); appAlert('הפרס מומש והמסלול אופס'); parent(user);
+  await saveChildData(child,data);
+  await notifyParentAction(user, child, 'מימוש פרס', parentLabel(user) + ' מימש ל' + childLabel(child) + ' פרס ואיפס את המסלול', shouldSendPushToSelectedChild());
+  appAlert('הפרס מומש והמסלול אופס'); parent(user);
 }
 async function changePassword(){ var newPass=document.getElementById('newPass').value; if(newPass===''){appAlert('הסיסמה לא יכולה להיות ריקה'); return;} PASSWORDS[user]=newPass; APP_SETTINGS.parentsDirectory[user].password=newPass; await saveAppSettings(); appAlert('הסיסמה נשמרה'); parent(user); }
 
