@@ -6,6 +6,7 @@
   <title>כוכבים</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -517,7 +518,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.5.4";
+var APP_VERSION = "2.6.1";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -543,6 +544,10 @@ var NOTIFICATION_UNSUBSCRIBE = null;
 var APP_OPENED_AT = Date.now();
 var CLIENT_INSTANCE_ID = localStorage.getItem('starsClientId') || ('client_' + Math.random().toString(36).slice(2));
 localStorage.setItem('starsClientId', CLIENT_INSTANCE_ID);
+var FCM_PUBLIC_VAPID_KEY = "BDiMO0iSXqB37kzb1P0Vnpis8NuTHsRWg84OJJLIjDVbUclG1WxPy6Kce7L3Olxb9caZwmNErX53M7KlRCrQF74";
+var messaging = null;
+var FCM_TOKEN = localStorage.getItem('starsFcmToken') || '';
+var FCM_LAST_SAVED_TOKEN = localStorage.getItem('starsFcmSavedToken') || '';
 
 function notificationsSupported(){
   return typeof Notification !== 'undefined';
@@ -550,15 +555,63 @@ function notificationsSupported(){
 function shouldShowNotificationPrompt(){
   return notificationsSupported() && Notification.permission !== 'granted';
 }
-async function requestBrowserNotifications(){
-  if(!notificationsSupported()){
-    appAlert('הדפדפן הזה לא תומך בהתראות מהאתר');
+function canUseFcmPush(){
+  return !!(firebase.messaging && 'serviceWorker' in navigator && notificationsSupported());
+}
+async function registerFcmToken(registration){
+  try{
+    if(!messaging) messaging = firebase.messaging();
+    var token = await messaging.getToken({
+      vapidKey: FCM_PUBLIC_VAPID_KEY,
+      serviceWorkerRegistration: registration
+    });
+    if(!token) return;
+    FCM_TOKEN = token;
+    localStorage.setItem('starsFcmToken', token);
+    if(FCM_LAST_SAVED_TOKEN === token) return;
+    await db.collection('fcm_tokens').doc(token).set({
+      token: token,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      userAgent: navigator.userAgent || '',
+      createdAtMillis: Date.now(),
+      createdAtText: nowText(),
+      active: true
+    }, { merge:true });
+    FCM_LAST_SAVED_TOKEN = token;
+    localStorage.setItem('starsFcmSavedToken', token);
+  }catch(e){
+    console.log('FCM token error', e);
+  }
+}
+async function ensurePushSetup(){
+  if(!canUseFcmPush()) return;
+  try{
+    messaging = firebase.messaging();
+    var registration = await navigator.serviceWorker.register('./firebase-messaging-sw-github.js');
+    if(Notification.permission === 'granted'){
+      await registerFcmToken(registration);
+    }
+    messaging.onMessage(function(payload){
+      try{
+        var n = payload && payload.notification ? payload.notification : {};
+        showToast((n.title || 'התראה') + (n.body ? ' • ' + n.body : ''));
+      }catch(e){}
+    });
+  }catch(e){
+    console.log('FCM setup error', e);
+  }
+}
+async function requestTruePushNotifications(){
+  if(!canUseFcmPush()){
+    appAlert('הדפדפן הזה לא תומך בהתראות פוש מלאות');
     return;
   }
   try {
     var permission = await Notification.requestPermission();
     if(permission === 'granted'){
-      showToast('ההתראות הופעלו בהצלחה 🔔');
+      var registration = await navigator.serviceWorker.register('./firebase-messaging-sw-github.js');
+      await registerFcmToken(registration);
+      showToast('התראות פוש הופעלו בהצלחה 🔔');
     } else {
       appAlert('לא אושרו התראות כרגע');
     }
@@ -570,6 +623,13 @@ async function requestBrowserNotifications(){
 async function pushAppNotification(title, body){
   try {
     await db.collection('app_notifications').add({
+      title: title,
+      body: body,
+      createdAtMillis: Date.now(),
+      createdAtText: nowText(),
+      senderClientId: CLIENT_INSTANCE_ID
+    });
+    await db.collection('notifications').add({
       title: title,
       body: body,
       createdAtMillis: Date.now(),
@@ -1270,7 +1330,7 @@ function home(){
       <div class="card app-shimmer">
         <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
         <div class="small">האפליקציה מחוברת למערכת הניהול החדשה</div>
-        ${shouldShowNotificationPrompt() ? `<div class="notification-card"><div style="font-weight:bold">🔔 קבל התראות מהאפליקציה</div><div class="small" style="margin-top:6px">כדי לקבל התראות על בקשות ואישורים, צריך לאשר התראות בדפדפן.</div><button style="margin-top:8px" onclick="requestBrowserNotifications()">אפשר התראות</button></div>` : ``}
+        ${shouldShowNotificationPrompt() ? `<div class="notification-card"><div style="font-weight:bold">🔔 קבל התראות מהאפליקציה</div><div class="small" style="margin-top:6px">כדי לקבל פוש אמיתי גם כשהאתר סגור, צריך לאשר התראות בדפדפן.</div><button style="margin-top:8px" onclick="requestTruePushNotifications()">אפשר התראות</button></div>` : ``}
         <div class="grid-buttons">${childButtons}</div>
         ${moreSection}
         ${customSections}
@@ -1695,7 +1755,7 @@ async function saveChildAppearance(child){
 
 async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){appAlert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); appAlert('הסיסמה החדשה נשמרה'); childLogin(child); }
 function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
-(async function start(){ try { await ensureSettings(); startNotificationListener(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
+(async function start(){ try { await ensureSettings(); startNotificationListener(); await ensurePushSetup(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
 </script>
 </body>
 </html>
