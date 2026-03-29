@@ -714,9 +714,86 @@ function renderAdminGroupsPreview(){
   Object.keys(grouped.custom).forEach(function(groupName){ parts.push(`<div class="card" style="margin-top:0"><h3 style="margin-top:0">${groupName}</h3><div class="grid-buttons">${grouped.custom[groupName].join('')}</div></div>`); });
   return parts.join('') || '<div class="small">אין ילדים לתצוגה</div>';
 }
+
+async function addAdminParent(){
+  var name = document.getElementById('adminParentName').value.trim();
+  var key = (document.getElementById('adminParentKey').value || '').trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_\-]/g,'');
+  var password = document.getElementById('adminParentPassword').value.trim();
+  if(!name || !key || !password){ appAlert('מלא שם, מזהה וסיסמה להורה'); return; }
+  if(APP_SETTINGS.parentsDirectory[key]){ appAlert('כבר קיים הורה עם המזהה הזה'); return; }
+  APP_SETTINGS.parentsDirectory[key] = { name:name, password:password };
+  PASSWORDS[key] = password;
+  Object.keys(APP_SETTINGS.childrenDirectory).forEach(function(childId){
+    APP_SETTINGS.permissionsMatrix[childId] = APP_SETTINGS.permissionsMatrix[childId] || {};
+    if(typeof APP_SETTINGS.permissionsMatrix[childId][key] !== 'boolean') APP_SETTINGS.permissionsMatrix[childId][key] = false;
+    APP_SETTINGS.presetTasks[childId] = APP_SETTINGS.presetTasks[childId] || {};
+    if(!Array.isArray(APP_SETTINGS.presetTasks[childId][key])) APP_SETTINGS.presetTasks[childId][key] = [];
+  });
+  await saveAppSettings();
+  renderAdminPanel();
+}
+async function updateAdminParentField(id, field, value){
+  if(!APP_SETTINGS.parentsDirectory[id]) return;
+  APP_SETTINGS.parentsDirectory[id][field] = value;
+  if(field === 'password') PASSWORDS[id] = value;
+  await saveAppSettings();
+  renderAdminPanel();
+}
+async function deleteAdminParent(id){
+  var ok = await appConfirm('למחוק את ההורה הזה ממערכת הניהול?','מחיקת הורה');
+  if(!ok) return;
+  delete APP_SETTINGS.parentsDirectory[id];
+  delete PASSWORDS[id];
+  delete SELECTED_PARENT_CHILD[id];
+  Object.keys(APP_SETTINGS.permissionsMatrix).forEach(function(childId){
+    if(APP_SETTINGS.permissionsMatrix[childId]) delete APP_SETTINGS.permissionsMatrix[childId][id];
+  });
+  Object.keys(APP_SETTINGS.presetTasks).forEach(function(childId){
+    if(APP_SETTINGS.presetTasks[childId]) delete APP_SETTINGS.presetTasks[childId][id];
+  });
+  await saveAppSettings();
+  renderAdminPanel();
+}
+function renderAdminParentsEditorHtml(){
+  var ids = Object.keys(APP_SETTINGS.parentsDirectory);
+  if(!ids.length) return '<div class="small">אין הורים במערכת</div>';
+  return ids.map(function(parentId){
+    var p = APP_SETTINGS.parentsDirectory[parentId] || {};
+    return `<div class="summary-card" style="min-width:unset;max-width:none;flex:none;margin-bottom:12px;text-align:right">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <div><strong>${parentLabel(parentId)}</strong> <span class="small">(${parentId})</span></div>
+        <button class="danger mini" onclick="deleteAdminParent('${parentId}')">מחק הורה</button>
+      </div>
+      <input value="${(p.name||'').replace(/"/g,'&quot;')}" onchange="updateAdminParentField('${parentId}','name',this.value)" placeholder="שם ההורה">
+      <input value="${(p.password||'').replace(/"/g,'&quot;')}" onchange="updateAdminParentField('${parentId}','password',this.value)" placeholder="סיסמה">
+      <div class="muted-box"><div class="small">סיסמה נוכחית</div><div style="font-weight:bold;margin-top:6px">${p.password || ''}</div></div>
+    </div>`;
+  }).join('');
+}
+function renderAdminPasswordsHtml(){
+  var parentRows = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
+    return `<div class="task-line"><div><strong>${parentLabel(parentId)}</strong> <span class="small">(${parentId})</span></div><div style="font-weight:bold">${PASSWORDS[parentId] || ''}</div></div>`;
+  }).join('');
+  var childRows = Object.keys(APP_SETTINGS.childrenDirectory).map(function(childId){
+    return `<div class="task-line"><div><strong>${childEmoji(childId)} ${childLabel(childId)}</strong> <span class="small">(${childId})</span></div><div style="font-weight:bold">${CHILD_PASSWORDS[childId] || ''}</div></div>`;
+  }).join('');
+  return `<div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f8fafc)"><h3 style="margin-top:0">כל הסיסמאות במערכת</h3>
+    <div class="small">הורים / מנהלים</div>${parentRows || '<div class="small">אין הורים</div>'}
+    <hr><div class="small">ילדים</div>${childRows || '<div class="small">אין ילדים</div>'}
+  </div>`;
+}
+
 function renderAdminPanel(){
-  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:1100px"><h2>ממשק ניהול מתקדם</h2><div class="small">כאן אפשר לערוך ילדים, לשנות צבעים, אייקונים, קבוצות והרשאות</div>
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:1180px"><h2>ממשק ניהול מתקדם</h2><div class="small">כאן אפשר לערוך ילדים, הורים, סיסמאות, צבעים, אייקונים, קבוצות והרשאות</div>
+    ${renderAdminPasswordsHtml()}
     <div class="row">
+      <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f8fafc)">
+        <h3 style="margin-top:0">הוספת הורה / מנהל</h3>
+        <input id="adminParentName" placeholder="שם ההורה">
+        <input id="adminParentKey" placeholder="מזהה באנגלית, לדוגמה: father / mother / grandma">
+        <input id="adminParentPassword" placeholder="סיסמה">
+        <button onclick="addAdminParent()">שמור הורה</button>
+      </div>
       <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f8fafc)">
         <h3 style="margin-top:0">הוספת ילד / ילדה</h3>
         <input id="adminChildName" placeholder="שם הילד">
@@ -736,13 +813,19 @@ function renderAdminPanel(){
         <input id="adminChildCustomGroup" placeholder="שם קבוצה מותאמת">
         <button onclick="addAdminChild()">שמור ילד</button>
       </div>
+    </div>
+    <div class="row">
       <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#eef2ff)">
+        <h3 style="margin-top:0">עריכת הורים</h3>
+        ${renderAdminParentsEditorHtml()}
+      </div>
+      <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#fff7ed)">
         <h3 style="margin-top:0">תצוגת מסך הבית</h3>
         ${renderAdminGroupsPreview()}
       </div>
     </div>
     <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#fff7ed)"><h3 style="margin-top:0">עריכת ילדים</h3>${renderAdminChildrenEditorHtml()}</div>
-    <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f0fdf4)"><h3 style="margin-top:0">הרשאות מסודרות</h3>${renderAdminPermissionsHtml()}<div style="margin-top:12px"><button onclick="saveAdminPermissions()">שמור הרשאות</button></div></div>
+    <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f0fdf4)"><h3 style="margin-top:0">הרשאות מסודרות</h3><div class="small">כל שורה היא ילד וכל עמודה היא הורה. סמן למי מותר לנהל כל ילד.</div>${renderAdminPermissionsHtml()}<div style="margin-top:12px"><button onclick="saveAdminPermissions()">שמור הרשאות</button></div></div>
     <button class="secondary" onclick="home()">חזרה</button>
   </div>`;
 }
