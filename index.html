@@ -391,6 +391,66 @@
       margin-top: 8px;
     }
 
+
+    .app-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 16px;
+    }
+    .app-modal {
+      width: min(420px, 96vw);
+      background: linear-gradient(180deg,#ffffff,#fff7ed);
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.20);
+      border: 1px solid rgba(255,255,255,.8);
+      padding: 18px;
+      text-align: center;
+      animation: popIn .2s ease;
+    }
+    .app-modal-title {
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #be185d;
+    }
+    .app-modal-message {
+      white-space: pre-line;
+      line-height: 1.5;
+      color: #334155;
+      margin-bottom: 14px;
+    }
+    .app-modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .notification-card {
+      margin-top: 12px;
+      background: linear-gradient(180deg,#ffffff,#eff6ff);
+      border: 2px dashed #93c5fd;
+      border-radius: 24px;
+      text-align: right;
+    }
+    .notification-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      background: #fff;
+      border: 1px solid #dbeafe;
+      border-radius: 14px;
+      padding: 10px;
+      margin: 8px 0;
+      flex-wrap: wrap;
+    }
+
     @keyframes floaty {
       0%,100% { transform: translateY(0); }
       50% { transform: translateY(-6px); }
@@ -466,7 +526,7 @@
     var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
     var MASTER_PASSWORD = "plsM@L8088";
     var user = null;
-    var APP_VERSION = "2.2.2";
+    var APP_VERSION = "2.3";
     var APP_SETTINGS = {
       presetTasks: {},
       sharedShop: []
@@ -512,6 +572,69 @@
 
     function safeNumber(v){ return Number(v || 0); }
 
+    function appAlert(message, title){
+      title = title || 'הודעה';
+      var old = document.getElementById('appCustomModal');
+      if(old) old.remove();
+      var overlay = document.createElement('div');
+      overlay.id = 'appCustomModal';
+      overlay.className = 'app-modal-overlay';
+      overlay.innerHTML = `
+        <div class="app-modal">
+          <div class="app-modal-title">${title}</div>
+          <div class="app-modal-message">${String(message || '').replace(/</g,'&lt;')}</div>
+          <div class="app-modal-actions">
+            <button onclick="closeAppModal()">סגור</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+
+    function closeAppModal(){
+      var modal = document.getElementById('appCustomModal');
+      if(modal) modal.remove();
+    }
+
+    function appConfirm(message, title){
+      title = title || 'אישור פעולה';
+      return new Promise(function(resolve){
+        var old = document.getElementById('appCustomModal');
+        if(old) old.remove();
+        var overlay = document.createElement('div');
+        overlay.id = 'appCustomModal';
+        overlay.className = 'app-modal-overlay';
+        overlay.innerHTML = `
+          <div class="app-modal">
+            <div class="app-modal-title">${title}</div>
+            <div class="app-modal-message">${String(message || '').replace(/</g,'&lt;')}</div>
+            <div class="app-modal-actions">
+              <button class="danger" id="confirmYesBtn">אשר</button>
+              <button class="secondary" id="confirmNoBtn">ביטול</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        document.getElementById('confirmYesBtn').onclick = function(){ closeAppModal(); resolve(true); };
+        document.getElementById('confirmNoBtn').onclick = function(){ closeAppModal(); resolve(false); };
+      });
+    }
+
+    window.alert = function(message){ appAlert(message); };
+
+    function pushChildNotification(data, type, message){
+      data.childNotifications = data.childNotifications || [];
+      data.childNotifications.unshift({
+        id: 'ntf_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        type: type || 'info',
+        message: message,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.childNotifications = data.childNotifications.slice(0,10);
+    }
+
+
     function parentLabel(role){
       if(role === "father") return "אבא";
       if(role === "mother") return "אמא";
@@ -552,6 +675,9 @@
       if(action === "shop_pending") return "בקשת מימוש פרס";
       if(action === "shop_approved") return "פרס אושר";
       if(action === "shop_rejected") return "פרס נדחה";
+      if(action === "custom_reward_pending") return "בקשת פרס מיוחד";
+      if(action === "custom_reward_approved") return "פרס מיוחד אושר";
+      if(action === "custom_reward_rejected") return "פרס מיוחד נדחה";
       return "עדכון";
     }
 
@@ -584,6 +710,31 @@
     function getAllowedRolesForChild(id){
       if(id === "itai" || id === "noya") return ["mother"];
       return ["father", "mother", "grandma"];
+    }
+
+    function deductStarsFromChild(data, childId, price){
+      price = safeNumber(price);
+      if(childId === "itai" || childId === "noya"){
+        data.mother = Math.max(0, safeNumber(data.mother) - price);
+        return;
+      }
+      var pools = [
+        { key: 'father', value: safeNumber(data.father) },
+        { key: 'mother', value: safeNumber(data.mother) },
+        { key: 'grandma', value: safeNumber(data.grandma) }
+      ];
+      pools.sort(function(a,b){ return b.value - a.value; });
+      var left = price;
+      pools.forEach(function(pool){
+        if(left <= 0) return;
+        var take = Math.min(pool.value, left);
+        data[pool.key] = Math.max(0, safeNumber(data[pool.key]) - take);
+        left -= take;
+      });
+    }
+
+    function formatApproverNames(arr){
+      return (arr || []).map(parentLabel).join(', ');
     }
 
     function getCurrentTotal(data, id){
@@ -737,7 +888,9 @@
         rewardGrandma: "",
         logs: [],
         pendingTasks: [],
-        pendingShopRequests: []
+        pendingShopRequests: [],
+        childNotifications: [],
+        customRewardRequests: []
       };
     }
 
@@ -982,6 +1135,7 @@
     function renderPendingStatusForChild(id, data){
       var pendingTasks = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending'; });
       var pendingShopRequests = (data.pendingShopRequests || []).filter(function(req){ return req.status === 'pending'; });
+      var customRewardRequests = (data.customRewardRequests || []).slice().sort(function(a,b){ return safeNumber(b.requestedAtMillis || b.resolvedAtMillis) - safeNumber(a.requestedAtMillis || a.resolvedAtMillis); });
       var parts = [];
       pendingTasks.forEach(function(pt){
         parts.push(`<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`);
@@ -989,7 +1143,48 @@
       pendingShopRequests.forEach(function(req){
         parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מימוש פרס</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}</div></div>`);
       });
+      customRewardRequests.forEach(function(req){
+        var details = '';
+        if(req.status === 'pending'){
+          details = 'ממתין לאישור ⏳';
+          if((req.rejections || []).length){
+            details += ' • סירבו בינתיים: ' + formatApproverNames(req.rejections);
+          }
+        } else if(req.status === 'approved'){
+          details = 'אושר על ידי ' + parentLabel(req.approvedBy) + ' ✅';
+        } else if(req.status === 'rejected'){
+          details = 'נדחה ❌';
+          if((req.rejections || []).length){
+            details += ' • סירבו: ' + formatApproverNames(req.rejections);
+          }
+        }
+        parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת פרס מיוחד</div><div class="small">${details} • ${req.requestedAtText || req.resolvedAtText || ''}</div></div>`);
+      });
       return parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לבדיקה כרגע</div>';
+    }
+
+
+
+    function renderChildNotifications(id, data){
+      var notifications = (data.childNotifications || []);
+      if(!notifications.length){
+        return '<div class="small">אין התראות חדשות כרגע</div>';
+      }
+      return notifications.map(function(item){
+        return `
+          <div class="notification-line">
+            <div><strong>${item.message}</strong><div class="small">${item.createdAtText || ''}</div></div>
+            <button class="mini secondary" onclick="dismissChildNotification('${id}','${item.id}')">סגור</button>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function dismissChildNotification(childId, notificationId){
+      var data = await getChildData(childId);
+      data.childNotifications = (data.childNotifications || []).filter(function(item){ return item.id !== notificationId; });
+      await saveChildData(childId, data);
+      child(childId);
     }
 
     function renderShopManager(){
@@ -1038,6 +1233,8 @@
       var logs = data.logs || [];
       var pendingTasks = data.pendingTasks || [];
       var pendingShopRequests = data.pendingShopRequests || [];
+      var childNotifications = data.childNotifications || [];
+      var customRewardRequests = data.customRewardRequests || [];
       var latest = logs.length ? logs[0] : null;
       var showBurst = latest && latest.action === "add";
       var burstParent = showBurst ? parentLabel(latest.parent) : "";
@@ -1132,6 +1329,11 @@
           <div class="stats-grid-parents">${statsHtml}</div>
           ${goalsHtml}
 
+          <div class="card notification-card">
+            <h3 style="margin-top:0">🔔 התראות</h3>
+            ${renderChildNotifications(id, data)}
+          </div>
+
           <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac; border-radius:24px;">
             <h3 style="margin-top:0">⚡ משימות מוכנות</h3>
             <div class="task-btn-wrap">${renderQuickTaskButtons(id, data)}</div>
@@ -1145,6 +1347,15 @@
           <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; border-radius:24px; text-align:right;">
             <h3 style="margin-top:0">🛒 חנות הפרסים</h3>
             ${renderShopForChild(id, data)}
+          </div>
+
+          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#eef2ff); border:2px dashed #a5b4fc; border-radius:24px; text-align:right;">
+            <h3 style="margin-top:0">💡 תציעו פרס חדש</h3>
+            <div class="small">כתוב מה אתה רוצה וכמה כוכבים אתה מציע לשלם</div>
+            <input id="customRewardName" placeholder="מה בא לך לקבל?" style="width:90%;">
+            <input id="customRewardPrice" type="number" placeholder="כמה כוכבים אתה מציע?" style="width:90%;">
+            <br>
+            <button class="shop" onclick="requestCustomReward('${id}')">שלח בקשה להורים</button>
           </div>
 
           <div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d; border-radius:24px;">
@@ -1170,7 +1381,133 @@
       `;
     }
 
-    async function requestShopPurchase(id, itemIndex){
+    async function requestCustomReward(childId){
+      var itemName = (document.getElementById('customRewardName') || {}).value || '';
+      var price = Number((document.getElementById('customRewardPrice') || {}).value);
+      itemName = itemName.trim();
+      if(!itemName || !price || price < 1){
+        alert('תכתוב מה אתה רוצה וכמה כוכבים אתה מציע');
+        return;
+      }
+
+      var data = await getChildData(childId);
+      data.customRewardRequests = data.customRewardRequests || [];
+      var existsPending = data.customRewardRequests.some(function(req){
+        return req.status === 'pending' && req.itemName === itemName && safeNumber(req.price) === safeNumber(price);
+      });
+      if(existsPending){
+        alert('כבר יש בקשה כזאת שמחכה לאישור ⏳');
+        return;
+      }
+
+      data.customRewardRequests.unshift({
+        id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        itemName: itemName,
+        price: safeNumber(price),
+        status: 'pending',
+        rejections: [],
+        approvedBy: null,
+        requestedAtText: nowText(),
+        requestedAtMillis: Date.now(),
+        resolvedAtText: ''
+      });
+
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: 'mother',
+        action: 'custom_reward_pending',
+        amount: safeNumber(price),
+        note: 'בקשת פרס: ' + itemName,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert('הבקשה נשלחה להורים ✅');
+      child(childId);
+    }
+
+    async function approveCustomReward(childId, requestId){
+      var data = await getChildData(childId);
+      data.customRewardRequests = data.customRewardRequests || [];
+      var idx = data.customRewardRequests.findIndex(function(req){ return req.id === requestId; });
+      if(idx === -1) return;
+      var req = data.customRewardRequests[idx];
+      if(req.status !== 'pending') return;
+      var allowed = getAllowedRolesForChild(childId);
+      if(allowed.indexOf(user) === -1){
+        alert('אין לך הרשאה לאשר את הבקשה הזאת');
+        return;
+      }
+
+      var total = getCurrentTotal(data, childId);
+      if(total < safeNumber(req.price)){
+        alert('אין מספיק כוכבים כרגע כדי לאשר את הבקשה הזאת');
+        return;
+      }
+
+      deductStarsFromChild(data, childId, req.price);
+      req.status = 'approved';
+      req.approvedBy = user;
+      req.resolvedAtText = nowText();
+
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: user,
+        action: 'custom_reward_approved',
+        amount: safeNumber(req.price),
+        note: 'אושר פרס מיוחד: ' + req.itemName,
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+      pushChildNotification(data, 'success', parentLabel(user) + ' אישר לך: ' + req.itemName + ' ✅');
+      await saveChildData(childId, data);
+      alert('הבקשה אושרה והכוכבים עודכנו');
+      parent(user);
+    }
+
+    async function rejectCustomReward(childId, requestId){
+      var data = await getChildData(childId);
+      data.customRewardRequests = data.customRewardRequests || [];
+      var idx = data.customRewardRequests.findIndex(function(req){ return req.id === requestId; });
+      if(idx === -1) return;
+      var req = data.customRewardRequests[idx];
+      if(req.status !== 'pending') return;
+      var allowed = getAllowedRolesForChild(childId);
+      if(allowed.indexOf(user) === -1){
+        alert('אין לך הרשאה לדחות את הבקשה הזאת');
+        return;
+      }
+      req.rejections = req.rejections || [];
+      if(req.rejections.indexOf(user) !== -1){
+        alert('כבר סירבת לבקשה הזאת');
+        return;
+      }
+      req.rejections.push(user);
+      var allRejected = allowed.every(function(role){ return req.rejections.indexOf(role) !== -1; });
+      if(allRejected){
+        req.status = 'rejected';
+        req.resolvedAtText = nowText();
+        pushChildNotification(data, 'error', 'הבקשה לפרס נדחתה: ' + req.itemName + ' ❌');
+      }
+
+      var logs = data.logs || [];
+      logs.unshift({
+        parent: user,
+        action: 'custom_reward_rejected',
+        amount: safeNumber(req.price),
+        note: allRejected ? ('נדחתה סופית בקשת פרס: ' + req.itemName) : ('סירוב חלקי לבקשת פרס: ' + req.itemName),
+        createdAtText: nowText(),
+        createdAtMillis: Date.now()
+      });
+      data.logs = logs.slice(0,100);
+      await saveChildData(childId, data);
+      alert(allRejected ? 'כל ההורים הרלוונטיים סירבו לבקשה' : 'הסירוב נשמר. הבקשה עדיין פתוחה לאחרים');
+      parent(user);
+    }
+
+async function requestShopPurchase(id, itemIndex){
       var item = APP_SETTINGS.sharedShop[itemIndex];
       if(!item) return;
 
@@ -1242,6 +1579,7 @@
           createdAtMillis: Date.now()
         });
         data.logs = logsFail.slice(0,100);
+        pushChildNotification(data, 'error', 'לא אושר הפרס: ' + req.itemName + ' ❌');
         await saveChildData(childId, data);
         alert('לא ניתן לאשר, אין מספיק כוכבים כרגע');
         parent(user);
@@ -1249,23 +1587,7 @@
       }
 
       var price = safeNumber(req.price);
-      if(childId === "itai" || childId === "noya"){
-        data.mother = Math.max(0, safeNumber(data.mother) - price);
-      } else {
-        var pools = [
-          { key: 'father', value: safeNumber(data.father) },
-          { key: 'mother', value: safeNumber(data.mother) },
-          { key: 'grandma', value: safeNumber(data.grandma) }
-        ];
-        pools.sort(function(a,b){ return b.value - a.value; });
-        var left = price;
-        pools.forEach(function(pool){
-          if(left <= 0) return;
-          var take = Math.min(pool.value, left);
-          data[pool.key] = Math.max(0, safeNumber(data[pool.key]) - take);
-          left -= take;
-        });
-      }
+      deductStarsFromChild(data, childId, price);
 
       data.pendingShopRequests.splice(idx,1);
       var logs = data.logs || [];
@@ -1278,6 +1600,7 @@
         createdAtMillis: Date.now()
       });
       data.logs = logs.slice(0,100);
+      pushChildNotification(data, 'success', 'אושר לך פרס: ' + req.itemName + ' ✅');
       await saveChildData(childId, data);
       alert('הפרס אושר והכוכבים עודכנו 🎉');
       parent(user);
@@ -1306,6 +1629,7 @@
         createdAtMillis: Date.now()
       });
       data.logs = logs.slice(0,100);
+      pushChildNotification(data, 'error', 'הפרס נדחה: ' + req.itemName + ' ❌');
       await saveChildData(childId, data);
       alert('הבקשה לפרס נדחתה');
       parent(user);
@@ -1374,6 +1698,7 @@
         createdAtMillis: Date.now()
       });
       data.logs = logs.slice(0,100);
+      pushChildNotification(data, 'success', 'המשימה אושרה: ' + pt.taskName + ' ✅');
       await saveChildData(childId, data);
       alert('המשימה אושרה והכוכבים נוספו 🌟');
       parent(user);
@@ -1400,6 +1725,7 @@
         createdAtMillis: Date.now()
       });
       data.logs = logs.slice(0,100);
+      pushChildNotification(data, 'error', 'המשימה לא אושרה: ' + pt.taskName + ' ❌');
       await saveChildData(childId, data);
       alert('המשימה נדחתה');
       parent(user);
@@ -1436,10 +1762,27 @@
             </div>
           `);
         });
+
+        var pendingCustom = (data.customRewardRequests || []).filter(function(req){
+          return req.status === 'pending' && getAllowedRolesForChild(id).indexOf(role) !== -1 && (req.rejections || []).indexOf(role) === -1;
+        });
+        pendingCustom.forEach(function(req){
+          var rejectedText = (req.rejections || []).length ? (' • כבר סירבו: ' + formatApproverNames(req.rejections)) : '';
+          parts.push(`
+            <div class="task-line">
+              <div><strong>${childLabel(id)}</strong> • בקשה מיוחדת: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText || ''}${rejectedText}</div></div>
+              <div>
+                <button class="mini shop" onclick="approveCustomReward('${id}','${req.id}')">אשר בקשה</button>
+                <button class="danger mini" onclick="rejectCustomReward('${id}','${req.id}')">סרב</button>
+              </div>
+            </div>
+          `);
+        });
       }
       var el = document.getElementById('pendingApprovals');
       if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לאישור כרגע</div>';
     }
+
 
     async function loadParentSummary(role){
       var ids = role === "father" ? ["meir","lavi"] : role === "mother" ? ["meir","lavi","itai","noya"] : ["meir","lavi"];
@@ -1872,7 +2215,7 @@
 
     async function clearChildLogs(){
       var child = getSelectedChild();
-      var ok = confirm("לנקות את כל הלוגים של " + childLabel(child) + "?");
+      var ok = await appConfirm("לנקות את כל הלוגים של " + childLabel(child) + "?", "ניקוי לוגים");
       if(!ok) return;
       var data = await getChildData(child);
       data.logs = [];
@@ -1882,7 +2225,7 @@
     }
 
     async function clearAllLogs(){
-      var ok = confirm("לנקות את כל הלוגים של כל הילדים?");
+      var ok = await appConfirm("לנקות את כל הלוגים של כל הילדים?", "ניקוי כל הלוגים");
       if(!ok) return;
       var children = ["meir","lavi","itai","noya"];
       for(var i = 0; i < children.length; i++){
@@ -1897,7 +2240,7 @@
 
 
     async function resetAllTasksAndPending(){
-      var ok = confirm("לאפס את כל המשימות המוכנות והמשימות שממתינות לבדיקה לכל הילדים?");
+      var ok = await appConfirm("לאפס את כל המשימות המוכנות והמשימות שממתינות לבדיקה לכל הילדים?", "איפוס משימות");
       if(!ok) return;
 
       APP_SETTINGS.presetTasks = createEmptyPresetTasks();
@@ -1927,7 +2270,7 @@
     }
 
     async function resetSharedShopAndPending(){
-      var ok = confirm("לאפס את כל המתנות בחנות ואת כל בקשות המימוש שמחכות לאישור?");
+      var ok = await appConfirm("לאפס את כל המתנות בחנות ואת כל בקשות המימוש שמחכות לאישור?", "איפוס חנות");
       if(!ok) return;
 
       APP_SETTINGS.sharedShop = [];
@@ -1955,7 +2298,7 @@
     }
 
     async function resetAll(){
-      var ok = confirm("אתה בטוח שאתה רוצה לאפס את כל המערכת? זה יאפס כוכבים, יעדים, מתנות, לוגים וסיסמאות.");
+      var ok = await appConfirm("אתה בטוח שאתה רוצה לאפס את כל המערכת? זה יאפס כוכבים, יעדים, מתנות, לוגים וסיסמאות.", "איפוס מלא");
       if(!ok) return;
 
       var children = ["meir","lavi","itai","noya"];
@@ -1992,4 +2335,4 @@
       }
     })();
   </script></body>
-  </html>
+</html>
