@@ -522,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.8";
+var APP_VERSION = "2.8.1";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -558,6 +558,9 @@ var LAST_PUSH_DEBUG = '';
 var DEVICE_LINKED_OWNER_TYPE = localStorage.getItem('starsLinkedOwnerType') || '';
 var DEVICE_LINKED_OWNER_ID = localStorage.getItem('starsLinkedOwnerId') || '';
 var DEVICE_LINKED_OWNER_LABEL = localStorage.getItem('starsLinkedOwnerLabel') || '';
+var AUTO_ENTER_ENABLED = localStorage.getItem('starsAutoEnterEnabled') === '1';
+var AUTO_ENTER_OWNER_TYPE = localStorage.getItem('starsAutoEnterOwnerType') || '';
+var AUTO_ENTER_OWNER_ID = localStorage.getItem('starsAutoEnterOwnerId') || '';
 
 function resolveOwnerLabel(ownerType, ownerId){
   if(!ownerType || !ownerId) return 'לא משויך';
@@ -575,6 +578,50 @@ function setLinkedDeviceState(ownerType, ownerId){
 }
 function clearLinkedDeviceState(){
   setLinkedDeviceState('', '');
+}
+function setAutoEnter(ownerType, ownerId){
+  AUTO_ENTER_ENABLED = true;
+  AUTO_ENTER_OWNER_TYPE = ownerType || '';
+  AUTO_ENTER_OWNER_ID = ownerId || '';
+  localStorage.setItem('starsAutoEnterEnabled','1');
+  localStorage.setItem('starsAutoEnterOwnerType', AUTO_ENTER_OWNER_TYPE);
+  localStorage.setItem('starsAutoEnterOwnerId', AUTO_ENTER_OWNER_ID);
+  showToast('כניסה אוטומטית הופעלה 🔐');
+}
+function clearAutoEnter(showMessage){
+  AUTO_ENTER_ENABLED = false;
+  AUTO_ENTER_OWNER_TYPE = '';
+  AUTO_ENTER_OWNER_ID = '';
+  localStorage.removeItem('starsAutoEnterEnabled');
+  localStorage.removeItem('starsAutoEnterOwnerType');
+  localStorage.removeItem('starsAutoEnterOwnerId');
+  if(showMessage !== false) showToast('כניסה אוטומטית בוטלה');
+}
+function isAutoEnterFor(ownerType, ownerId){
+  return AUTO_ENTER_ENABLED && AUTO_ENTER_OWNER_TYPE === ownerType && AUTO_ENTER_OWNER_ID === ownerId;
+}
+function renderAutoEnterLine(ownerType, ownerId){
+  return isAutoEnterFor(ownerType, ownerId) ? 'כניסה אוטומטית פעילה במכשיר הזה' : 'כניסה אוטומטית לא פעילה במכשיר הזה';
+}
+function goToAutoEnterOrHome(){
+  if(AUTO_ENTER_ENABLED && AUTO_ENTER_OWNER_ID){
+    if(AUTO_ENTER_OWNER_TYPE === 'parent'){
+      if(APP_SETTINGS.parentsDirectory && APP_SETTINGS.parentsDirectory[AUTO_ENTER_OWNER_ID]){
+        login(AUTO_ENTER_OWNER_ID);
+        return;
+      }
+      clearAutoEnter(false);
+    } else if(AUTO_ENTER_OWNER_TYPE === 'child'){
+      if(APP_SETTINGS.childrenDirectory && APP_SETTINGS.childrenDirectory[AUTO_ENTER_OWNER_ID]){
+        childLogin(AUTO_ENTER_OWNER_ID);
+        return;
+      }
+      clearAutoEnter(false);
+    } else {
+      clearAutoEnter(false);
+    }
+  }
+  home();
 }
 function renderLinkedDeviceLine(){
   return DEVICE_LINKED_OWNER_ID ? ('המכשיר משויך ל: ' + DEVICE_LINKED_OWNER_LABEL) : 'המכשיר עדיין לא שויך למשתמש';
@@ -1658,7 +1705,7 @@ function showSplash(){
     return `<span style="font-size:${24 + idx*2}px; animation:floaty ${2 + idx*0.18}s ease-in-out infinite; animation-delay:${idx*0.12}s">${icon}</span>`;
   }).join('');
   document.getElementById("app").innerHTML = `<div class="hero"><div class="card app-shimmer splash-card" style="min-height:340px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:${v.bg}; position:relative; overflow:hidden;"><div class="splash-orb splash-orb-a"></div><div class="splash-orb splash-orb-b"></div><div style="font-size:92px; animation:${v.anim}; filter:drop-shadow(0 10px 22px ${v.glow});">${v.icon}</div><div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px; animation:fadeRise .7s ease both;">${v.title}</div><div style="font-size:20px; font-weight:700; color:#7c2d12; margin-top:8px; animation:fadeRise .9s ease both;">${v.sub}</div><div class="floating-icons" style="margin-top:18px">${floating}</div><div onclick="adminVersionTap()" style="font-size:20px; font-weight:700; color:#7c2d12; margin-top:14px; cursor:pointer;">גרסה ${APP_VERSION}</div></div></div>`;
-  setTimeout(home, 2600);
+  setTimeout(goToAutoEnterOrHome, 2600);
 }
 function login(role){
   document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>${parentLabel(role)}</h2><input id="pass" type="password" placeholder="הכנס סיסמה"><br><button onclick="checkLogin('${role}')">כניסה</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
@@ -1758,8 +1805,11 @@ async function child(id){
             </div>
             <hr>
             <div class="small" style="color:#475569;">${isDeviceLinkedTo('child', id) ? ('המכשיר הזה כבר מאושר ל' + childLabel(id)) : renderLinkedDeviceLine()}</div>
+            <div class="small" style="margin-top:4px;color:#475569;">${renderAutoEnterLine('child', id)}</div>
             <div style="margin-top:8px">
               <button onclick="approveDeviceForCurrentUser('child','${id}')">אשר את המכשיר הזה ל${childLabel(id)}</button>
+              <button onclick="setAutoEnter('child','${id}')">הפעל כניסה אוטומטית</button>
+              <button class="secondary" onclick="clearAutoEnter(); child('${id}')">בטל כניסה אוטומטית</button>
             </div>
           </div><div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
   var emojiInput = document.getElementById('kidNewEmoji');
@@ -2001,7 +2051,7 @@ function renderPushManager(role){
     return `<div class="task-line"><div><strong>${childEmoji(childId)} ${childLabel(childId)}</strong><div class="small">כשאתה פועל על הילד הזה, אפשר לשלוח אליו פוש ולקבל ממנו פושים</div></div><label style="display:inline-flex;align-items:center;gap:8px"><input type="checkbox" id="pushRule_${role}_${childId}" ${checked ? 'checked' : ''}> פעיל</label></div>`;
   }).join('') || '<div class="small">אין ילדים זמינים להגדרה</div>';
   var linkedText = isDeviceLinkedTo('parent', role) ? 'המכשיר הזה כבר מאושר ל' + parentLabel(role) : renderLinkedDeviceLine();
-  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#eef6ff);"><h3 style="margin-top:0">🔔 התראות ופוש</h3><div class="small">כאן ${parentLabel(role)} מגדיר מאילו ילדים יקבל פושים ולאילו ילדים יישלחו פושים כשיבחר "שלח פוש לילד" בפעולות שלו.</div><div class="small" style="margin-top:6px;color:#475569;">${linkedText}</div><div style="margin-top:10px">${rows}</div><div style="margin-top:10px"><button onclick="saveParentPushSettings('${role}')">שמור הגדרות פוש</button><button onclick="approveDeviceForCurrentUser('parent','${role}')">אשר את המכשיר הזה ל${parentLabel(role)}</button>${notificationsEnabled() ? `<button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>` : `<button onclick="requestTruePushNotifications()">אפשר התראות במכשיר הזה</button>`}</div></div>`;
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#eef6ff);"><h3 style="margin-top:0">🔔 התראות ופוש</h3><div class="small">כאן ${parentLabel(role)} מגדיר מאילו ילדים יקבל פושים ולאילו ילדים יישלחו פושים כשיבחר "שלח פוש לילד" בפעולות שלו.</div><div class="small" style="margin-top:6px;color:#475569;">${linkedText}</div><div class="small" style="margin-top:4px;color:#475569;">${renderAutoEnterLine('parent', role)}</div><div style="margin-top:10px">${rows}</div><div style="margin-top:10px"><button onclick="saveParentPushSettings('${role}')">שמור הגדרות פוש</button><button onclick="approveDeviceForCurrentUser('parent','${role}')">אשר את המכשיר הזה ל${parentLabel(role)}</button>${notificationsEnabled() ? `<button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>` : `<button onclick="requestTruePushNotifications()">אפשר התראות במכשיר הזה</button>`}<button onclick="setAutoEnter('parent','${role}')">הפעל כניסה אוטומטית במכשיר הזה</button><button class="secondary" onclick="clearAutoEnter(); parent('${role}')">בטל כניסה אוטומטית</button></div></div>`;
 }
 async function saveParentPushSettings(role){
   APP_SETTINGS.pushMatrix = APP_SETTINGS.pushMatrix || {};
