@@ -1,8 +1,12 @@
-<!DOCTYPE html><html lang="he" dir="rtl">
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>כוכבים</title>  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>  <style>
+  <title>כוכבים</title>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <style>
     body {
       font-family: Arial, sans-serif;
       background: linear-gradient(180deg, #fff7ed, #ffe4e6);
@@ -391,66 +395,6 @@
       margin-top: 8px;
     }
 
-
-    .app-modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(15,23,42,.45);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      padding: 16px;
-    }
-    .app-modal {
-      width: min(420px, 96vw);
-      background: linear-gradient(180deg,#ffffff,#fff7ed);
-      border-radius: 24px;
-      box-shadow: 0 20px 50px rgba(0,0,0,.20);
-      border: 1px solid rgba(255,255,255,.8);
-      padding: 18px;
-      text-align: center;
-      animation: popIn .2s ease;
-    }
-    .app-modal-title {
-      font-size: 22px;
-      font-weight: bold;
-      margin-bottom: 8px;
-      color: #be185d;
-    }
-    .app-modal-message {
-      white-space: pre-line;
-      line-height: 1.5;
-      color: #334155;
-      margin-bottom: 14px;
-    }
-    .app-modal-actions {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-    .notification-card {
-      margin-top: 12px;
-      background: linear-gradient(180deg,#ffffff,#eff6ff);
-      border: 2px dashed #93c5fd;
-      border-radius: 24px;
-      text-align: right;
-    }
-    .notification-line {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      align-items: center;
-      background: #fff;
-      border: 1px solid #dbeafe;
-      border-radius: 14px;
-      padding: 10px;
-      margin: 8px 0;
-      flex-wrap: wrap;
-    }
-
     @keyframes floaty {
       0%,100% { transform: translateY(0); }
       50% { transform: translateY(-6px); }
@@ -501,1838 +445,475 @@
       70% { transform: scale(0.96) rotate(6deg); }
     }
 
+    
+    .grid-buttons{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
+    .pending-box{margin-top:12px;padding:12px;border-radius:18px;background:linear-gradient(180deg,#ffffff,#fff7ed);border:2px dashed #fdba74}
+
     @media (max-width: 640px) {
       .row { grid-template-columns: 1fr; }
       .kid-title { font-size: 28px; }
       .task-line, .shop-line { justify-content: center; }
       .stat .big { font-size: 34px; }
     }
-  </style></head>
+  </style>
+</head>
 <body>
-  <div id="app"></div>  <script>
-    firebase.initializeApp({
-      apiKey: "AIzaSyDRz4mbNreCeDa6VWRDPbvGND0zWRcB1U4",
-      authDomain: "family-stars-app.firebaseapp.com",
-      projectId: "family-stars-app"
+<div id="app"></div>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyDRz4mbNreCeDa6VWRDPbvGND0zWRcB1U4",
+  authDomain: "family-stars-app.firebaseapp.com",
+  projectId: "family-stars-app"
+});
+var db = firebase.firestore();
+
+var APP_VERSION = "2.4";
+var MASTER_PASSWORD = "plsM@L8088";
+var user = null;
+var APP_SETTINGS = {
+  parentsDirectory: {},
+  childrenDirectory: {},
+  permissionsMatrix: {},
+  presetTasks: {},
+  sharedShop: []
+};
+var PASSWORDS = {};
+var CHILD_PASSWORDS = {};
+var SELECTED_PARENT_CHILD = {};
+
+function safeNumber(v){ return Number(v || 0); }
+function nowText(){ return new Intl.DateTimeFormat("he-IL", { dateStyle:"short", timeStyle:"short" }).format(new Date()); }
+function parentLabel(role){ return APP_SETTINGS.parentsDirectory[role]?.name || role; }
+function childLabel(id){ return APP_SETTINGS.childrenDirectory[id]?.name || id; }
+function childEmoji(id){
+  var map={meir:"🦁",lavi:"🐯",itai:"🐻",noya:"🦋"};
+  return map[id] || "⭐";
+}
+function funnyWrongPassword(){
+  var messages=["אופס 😅 זאת לא הסיסמה שלך","כמעט! נסה שוב 😜","לא הפעם 🤭","עוד ניסיון קטן ותצליח 💪","זה לא זה, אבל אהבתי את הביטחון 😄"];
+  return messages[Math.floor(Math.random()*messages.length)];
+}
+function actionLabel(action){
+  var m={add:"קיבל",remove:"ירד",target:"עודכן יעד",redeem:"מימוש פרס",shop_buy:"קנה מהחנות",task_pending:"שלח לבדיקה",task_approved:"אושר אחרי בדיקה",task_rejected:"לא אושר",shop_pending:"בקשת מימוש פרס",shop_approved:"פרס אושר",shop_rejected:"פרס נדחה"};
+  return m[action] || "עדכון";
+}
+function createEmptyPresetTasks(){
+  var out={};
+  Object.keys(APP_SETTINGS.childrenDirectory || {}).forEach(function(childId){
+    out[childId]={};
+    Object.keys(APP_SETTINGS.parentsDirectory || {}).forEach(function(parentId){ out[childId][parentId]=[]; });
+  });
+  return out;
+}
+function normalizePresetTasks(raw){
+  var out = createEmptyPresetTasks();
+  if(!raw || typeof raw !== 'object') return out;
+  Object.keys(out).forEach(function(childId){
+    var childObj = raw[childId] || {};
+    Object.keys(out[childId]).forEach(function(parentId){
+      out[childId][parentId] = Array.isArray(childObj[parentId]) ? childObj[parentId].slice(0,3) : [];
     });
-
-    var db = firebase.firestore();
-    var firebaseDeleteField = firebase.firestore.FieldValue.delete();
-
-    var DEFAULT_PASSWORDS = { father:"1111", mother:"2222", grandma:"3333" };
-    var DEFAULT_CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
-
-    var PASSWORDS = { father:"1111", mother:"2222", grandma:"3333" };
-    var CHILD_PASSWORDS = { meir:"1234", lavi:"1234", itai:"1234", noya:"1234" };
-    var MASTER_PASSWORD = "plsM@L8088";
-    var user = null;
-    var APP_VERSION = "2.3";
-    var APP_SETTINGS = {
-      presetTasks: {},
-      sharedShop: []
-    };
-    var SELECTED_PARENT_CHILD = { father: 'meir', mother: 'meir', grandma: 'meir' };
-
-    function createEmptyPresetTasks(){
-      return {
-        meir: { father: [], mother: [], grandma: [] },
-        lavi: { father: [], mother: [], grandma: [] },
-        itai: { father: [], mother: [], grandma: [] },
-        noya: { father: [], mother: [], grandma: [] }
-      };
-    }
-
-    function normalizePresetTasks(raw){
-      var base = createEmptyPresetTasks();
-      if(!raw || typeof raw !== 'object') return base;
-
-      var childKeys = ['meir','lavi','itai','noya'];
-      var roleKeys = ['father','mother','grandma'];
-
-      childKeys.forEach(function(childId){
-        var childObj = raw[childId] || {};
-        roleKeys.forEach(function(role){
-          base[childId][role] = Array.isArray(childObj[role]) ? childObj[role].slice(0,3) : [];
-        });
-      });
-
-      return base;
-    }
-
-    function getPresetTasks(role, childId){
-      var normalized = APP_SETTINGS.presetTasks || {};
-      if(!normalized[childId]) return [];
-      return Array.isArray(normalized[childId][role]) ? normalized[childId][role] : [];
-    }
-
-    function setSelectedChild(role, childId){
-      SELECTED_PARENT_CHILD[role] = childId;
-      parent(role);
-    }
-
-    function safeNumber(v){ return Number(v || 0); }
-
-    function appAlert(message, title){
-      title = title || 'הודעה';
-      var old = document.getElementById('appCustomModal');
-      if(old) old.remove();
-      var overlay = document.createElement('div');
-      overlay.id = 'appCustomModal';
-      overlay.className = 'app-modal-overlay';
-      overlay.innerHTML = `
-        <div class="app-modal">
-          <div class="app-modal-title">${title}</div>
-          <div class="app-modal-message">${String(message || '').replace(/</g,'&lt;')}</div>
-          <div class="app-modal-actions">
-            <button onclick="closeAppModal()">סגור</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(overlay);
-    }
-
-    function closeAppModal(){
-      var modal = document.getElementById('appCustomModal');
-      if(modal) modal.remove();
-    }
-
-    function appConfirm(message, title){
-      title = title || 'אישור פעולה';
-      return new Promise(function(resolve){
-        var old = document.getElementById('appCustomModal');
-        if(old) old.remove();
-        var overlay = document.createElement('div');
-        overlay.id = 'appCustomModal';
-        overlay.className = 'app-modal-overlay';
-        overlay.innerHTML = `
-          <div class="app-modal">
-            <div class="app-modal-title">${title}</div>
-            <div class="app-modal-message">${String(message || '').replace(/</g,'&lt;')}</div>
-            <div class="app-modal-actions">
-              <button class="danger" id="confirmYesBtn">אשר</button>
-              <button class="secondary" id="confirmNoBtn">ביטול</button>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(overlay);
-        document.getElementById('confirmYesBtn').onclick = function(){ closeAppModal(); resolve(true); };
-        document.getElementById('confirmNoBtn').onclick = function(){ closeAppModal(); resolve(false); };
-      });
-    }
-
-    window.alert = function(message){ appAlert(message); };
-
-    function pushChildNotification(data, type, message){
-      data.childNotifications = data.childNotifications || [];
-      data.childNotifications.unshift({
-        id: 'ntf_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-        type: type || 'info',
-        message: message,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.childNotifications = data.childNotifications.slice(0,10);
-    }
-
-
-    function parentLabel(role){
-      if(role === "father") return "אבא";
-      if(role === "mother") return "אמא";
-      if(role === "grandma") return "סבתא שמחה";
-      return role;
-    }
-
-    function childLabel(id){
-      if(id === "meir") return "מאיר";
-      if(id === "lavi") return "לביא";
-      if(id === "itai") return "איתי";
-      if(id === "noya") return "נויה";
-      return id;
-    }
-
-    function childEmoji(id){
-      if(id === "meir") return "🦁";
-      if(id === "lavi") return "🐯";
-      if(id === "itai") return "🐻";
-      if(id === "noya") return "🦋";
-      return "⭐";
-    }
-
-    function actionLabel(action){
-      if(action === "add") return "קיבל";
-      if(action === "remove") return "ירד";
-      if(action === "target") return "עודכן יעד";
-      if(action === "redeem") return "מימוש פרס";
-      if(action === "password") return "שינוי סיסמה";
-      if(action === "clearlogs") return "ניקוי לוגים";
-      if(action === "clearalllogs") return "ניקוי כל הלוגים";
-      if(action === "reset") return "איפוס מלא";
-      if(action === "shop_buy") return "קנה מהחנות";
-      if(action === "task_quick") return "משימה מוכנה";
-      if(action === "task_pending") return "שלח לבדיקה";
-      if(action === "task_approved") return "אושר אחרי בדיקה";
-      if(action === "task_rejected") return "לא אושר";
-      if(action === "shop_pending") return "בקשת מימוש פרס";
-      if(action === "shop_approved") return "פרס אושר";
-      if(action === "shop_rejected") return "פרס נדחה";
-      if(action === "custom_reward_pending") return "בקשת פרס מיוחד";
-      if(action === "custom_reward_approved") return "פרס מיוחד אושר";
-      if(action === "custom_reward_rejected") return "פרס מיוחד נדחה";
-      return "עדכון";
-    }
-
-
-    function encouragementText(current, target, who){
-      var percent = Math.round((current / Math.max(1, target)) * 100);
-      if(current >= target) return "אלוף! הגעת ליעד של " + who + " 🎉";
-      if(percent >= 90) return "וואו, אתה ממש רגע מהיעד של " + who + "! 🚀";
-      if(percent >= 75) return "מדהים! עוד קצת ואתה מגיע ליעד של " + who + " ⭐";
-      if(percent >= 50) return "חצי דרך כבר מאחוריך מול " + who + " 💪";
-      if(percent >= 25) return "איזה יופי, אתה מתקדם נהדר מול " + who + " 🌟";
-      return "התחלה מצוינת, ממשיכים לאסוף כוכבים מול " + who + " ✨";
-    }
-
-    function funnyWrongPassword(){
-      var messages = [
-        "אופס 😅 זאת לא הסיסמה שלך",
-        "כמעט! נסה שוב 😜",
-        "לא הפעם 🤭",
-        "עוד ניסיון קטן ותצליח 💪",
-        "זה לא זה, אבל אהבתי את הביטחון 😄"
-      ];
-      return messages[Math.floor(Math.random() * messages.length)];
-    }
-
-    function nowText(){
-      return new Intl.DateTimeFormat("he-IL", { dateStyle:"short", timeStyle:"short" }).format(new Date());
-    }
-
-    function getAllowedRolesForChild(id){
-      if(id === "itai" || id === "noya") return ["mother"];
-      return ["father", "mother", "grandma"];
-    }
-
-    function deductStarsFromChild(data, childId, price){
-      price = safeNumber(price);
-      if(childId === "itai" || childId === "noya"){
-        data.mother = Math.max(0, safeNumber(data.mother) - price);
-        return;
-      }
-      var pools = [
-        { key: 'father', value: safeNumber(data.father) },
-        { key: 'mother', value: safeNumber(data.mother) },
-        { key: 'grandma', value: safeNumber(data.grandma) }
-      ];
-      pools.sort(function(a,b){ return b.value - a.value; });
-      var left = price;
-      pools.forEach(function(pool){
-        if(left <= 0) return;
-        var take = Math.min(pool.value, left);
-        data[pool.key] = Math.max(0, safeNumber(data[pool.key]) - take);
-        left -= take;
-      });
-    }
-
-    function formatApproverNames(arr){
-      return (arr || []).map(parentLabel).join(', ');
-    }
-
-    function getCurrentTotal(data, id){
-      if(id === "itai" || id === "noya") return safeNumber(data.mother);
-      return safeNumber(data.father) + safeNumber(data.mother) + safeNumber(data.grandma);
-    }
-
-    function getCurrentTargetTotal(data, id){
-      if(id === "itai" || id === "noya") return safeNumber(data.targetMother) || 100;
-      return (safeNumber(data.targetFather) || 100) + (safeNumber(data.targetMother) || 100) + (safeNumber(data.targetGrandma) || 100);
-    }
-
-    function calcOverallPercent(data, id){
-      var total = getCurrentTotal(data, id);
-      var target = getCurrentTargetTotal(data, id);
-      return Math.min(100, Math.round((total / Math.max(1, target)) * 100));
-    }
-
-    function calcLevel(data, id){
-      var percent = calcOverallPercent(data, id);
-      if(percent < 25) return "מתחיל 🟢";
-      if(percent < 50) return "מתקדם 🔵";
-      if(percent < 75) return "אלוף 🟣";
-      return "כוכב על 👑";
-    }
-
-    function buildLevelMessage(data, id){
-      var percent = calcOverallPercent(data, id);
-      var target = getCurrentTargetTotal(data, id);
-      var total = getCurrentTotal(data, id);
-      var left = Math.max(0, target - total);
-      if(percent >= 90) return "וואו! אתה ממש רגע מדרגה הבאה 🚀";
-      if(percent >= 75) return "עוד קצת ואתה כוכב על 👑";
-      if(percent >= 50) return "אתה מתקדם מעולה 💪";
-      if(percent >= 25) return "כל הכבוד, כבר התחלת לטפס 🌟";
-      return left > 0 ? "יאללה, חסרים עוד " + left + " כוכבים ליעד הגדול ✨" : "בוא נתחיל לצבור כוכבים ✨";
-    }
-
-    function getParentColorClass(role){
-      if(role === "father") return "f";
-      if(role === "mother") return "m";
-      return "g";
-    }
-
-    function getParentBarClass(role){
-      if(role === "father") return "bar-f";
-      if(role === "mother") return "bar-m";
-      return "bar-g";
-    }
-
-    function getParentTipClass(role){
-      if(role === "father") return "tip";
-      if(role === "mother") return "tip mother";
-      return "tip grandma";
-    }
-
-    async function ensureSettings(){
-      var ref = db.collection("settings").doc("app");
-      var snap = await ref.get();
-
-      if(!snap.exists){
-        PASSWORDS = {
-          father: DEFAULT_PASSWORDS.father,
-          mother: DEFAULT_PASSWORDS.mother,
-          grandma: DEFAULT_PASSWORDS.grandma
-        };
-        CHILD_PASSWORDS = {
-          meir: DEFAULT_CHILD_PASSWORDS.meir,
-          lavi: DEFAULT_CHILD_PASSWORDS.lavi,
-          itai: DEFAULT_CHILD_PASSWORDS.itai,
-          noya: DEFAULT_CHILD_PASSWORDS.noya
-        };
-        APP_SETTINGS = {
-          presetTasks: createEmptyPresetTasks(),
-          sharedShop: []
-        };
-
-        await ref.set({
-          passwords: PASSWORDS,
-          childPasswords: CHILD_PASSWORDS,
-          presetTasks: APP_SETTINGS.presetTasks,
-          sharedShop: APP_SETTINGS.sharedShop
-        });
-      } else {
-        var data = snap.data() || {};
-        var savedPasswords = data.passwords || {};
-        var savedChildPasswords = data.childPasswords || {};
-
-        PASSWORDS = {
-          father: savedPasswords.father || DEFAULT_PASSWORDS.father,
-          mother: savedPasswords.mother || DEFAULT_PASSWORDS.mother,
-          grandma: savedPasswords.grandma || DEFAULT_PASSWORDS.grandma
-        };
-        CHILD_PASSWORDS = {
-          meir: savedChildPasswords.meir || DEFAULT_CHILD_PASSWORDS.meir,
-          lavi: savedChildPasswords.lavi || DEFAULT_CHILD_PASSWORDS.lavi,
-          itai: savedChildPasswords.itai || DEFAULT_CHILD_PASSWORDS.itai,
-          noya: savedChildPasswords.noya || DEFAULT_CHILD_PASSWORDS.noya
-        };
-
-        APP_SETTINGS = {
-          presetTasks: normalizePresetTasks(data.presetTasks),
-          sharedShop: Array.isArray(data.sharedShop) ? data.sharedShop : []
-        };
-
-        await ref.set({
-          passwords: PASSWORDS,
-          childPasswords: CHILD_PASSWORDS,
-          presetTasks: APP_SETTINGS.presetTasks,
-          sharedShop: APP_SETTINGS.sharedShop
-        }, { merge:true });
-      }
-    }
-
-    async function saveAppSettings(){
-      await db.collection("settings").doc("app").set({
-        passwords: PASSWORDS,
-        childPasswords: CHILD_PASSWORDS,
-        presetTasks: APP_SETTINGS.presetTasks,
-        sharedShop: APP_SETTINGS.sharedShop
-      }, { merge:true });
-    }
-
-    async function replacePresetTasksInDb(newPresetTasks){
-      await db.collection("settings").doc("app").set({
-        passwords: PASSWORDS,
-        childPasswords: CHILD_PASSWORDS,
-        sharedShop: APP_SETTINGS.sharedShop,
-        presetTasks: firebaseDeleteField
-      }, { merge:true });
-
-      await db.collection("settings").doc("app").set({
-        passwords: PASSWORDS,
-        childPasswords: CHILD_PASSWORDS,
-        sharedShop: APP_SETTINGS.sharedShop,
-        presetTasks: newPresetTasks
-      }, { merge:true });
-    }
-
-    async function getChildData(id){
-      var snap = await db.collection("children").doc(id).get();
-      return snap.data() || {
-        father: 0,
-        mother: 0,
-        grandma: 0,
-        targetFather: 100,
-        targetMother: 100,
-        targetGrandma: 100,
-        rewardFather: "",
-        rewardMother: "",
-        rewardGrandma: "",
-        logs: [],
-        pendingTasks: [],
-        pendingShopRequests: [],
-        childNotifications: [],
-        customRewardRequests: []
-      };
-    }
-
-    async function saveChildData(id, data){
-      await db.collection("children").doc(id).set(data, { merge:true });
-    }
-
-    function home(){
-      document.getElementById("app").innerHTML = `
-        <div class="hero">
-          <div class="badge">⭐</div>
-          <div class="card app-shimmer">
-            <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
-            <div class="small">מאיר, לביא, איתי ונויה רואים כוכבים נפרדים מבני המשפחה, עם יעדים, מתנות והיסטוריה</div>
-            <div class="actions">
-              <button onclick="childLogin('meir')">🦁 מאיר</button>
-              <button onclick="childLogin('lavi')">🐯 לביא</button>
-              <button onclick="showMoreKids()">עוד ילדים ➕</button>
-              <br><br>
-              <button class="father" onclick="login('father')">כניסת אבא</button>
-              <button class="mother" onclick="login('mother')">כניסת אמא</button>
-              <button class="grandma" onclick="login('grandma')">כניסת סבתא שמחה</button>
-            </div>
-            <div style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95;">
-              גרסה ${APP_VERSION}
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    function showSplash(){
-      var variants = [
-        {
-          icon: '⭐',
-          iconStyle: 'font-size:88px; animation:spinStar 2.8s linear infinite; filter:drop-shadow(0 8px 18px rgba(251,191,36,.35));',
-          title: 'אפליקציית הכוכבים',
-          subtitle: 'של מאיר ולביא',
-          note: 'כוכבים, פרסים, יעדים וחיוכים ✨',
-          extras: '🦁 🐯 ⭐ 🎁'
-        },
-        {
-          icon: '🦁',
-          iconStyle: 'font-size:88px; animation:lionBounce 2.3s ease-in-out infinite; filter:drop-shadow(0 8px 18px rgba(251,146,60,.32));',
-          title: 'שלום מאיר ולביא',
-          subtitle: 'מוכנים לעולם של כוכבים?',
-          note: 'כל כניסה היא התחלה של הרפתקה חדשה 🌟',
-          extras: '🦁 ⭐ 🏆 ✨'
-        },
-        {
-          icon: '🎁',
-          iconStyle: 'font-size:88px; animation:giftPulse 2.1s ease-in-out infinite; filter:drop-shadow(0 8px 18px rgba(244,114,182,.30));',
-          title: 'ברוכים הבאים',
-          subtitle: 'למסיבת הכוכבים של הילדים',
-          note: 'מחכים לכם פרסים, יעדים והמון הפתעות 🎉',
-          extras: '🎁 🌈 ⭐ 🦋'
-        }
-      ];
-      var splash = variants[Math.floor(Math.random() * variants.length)];
-      document.getElementById("app").innerHTML = `
-        <div class="hero">
-          <div class="card app-shimmer" style="min-height:340px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);">
-            <div style="${splash.iconStyle}">${splash.icon}</div>
-            <div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px; animation:fadeRise .7s ease both;">${splash.title}</div>
-            <div style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px; animation:fadeRise .7s ease .2s both;">${splash.subtitle}</div>
-            <div style="margin-top:14px; color:#6b7280; font-size:15px; animation:fadeRise .7s ease .4s both;">${splash.note}</div>
-            <div style="display:flex; gap:10px; margin-top:18px; font-size:28px; animation:fadeRise .7s ease .6s both;">
-              ${splash.extras.split(' ').map(icon => `<span>${icon}</span>`).join('')}
-            </div>
-            <div style="margin-top:18px; font-size:13px; color:#94a3b8;">גרסה ${APP_VERSION}</div>
-          </div>
-        </div>
-      `;
-
-      setTimeout(function(){ home(); }, 4200);
-    }
-
-    function showMoreKids(){
-      document.getElementById("app").innerHTML = `
-        <div class="hero">
-          <div class="badge">🌟</div>
-          <div class="card app-shimmer">
-            <h2 style="margin:0 0 8px">עוד ילדים</h2>
-            <div class="small">בחר את הילד או הילדה שתרצה להיכנס אליהם</div>
-            <div class="actions">
-              <button onclick="childLogin('itai')">🐻 איתי</button>
-              <button onclick="childLogin('noya')">🦋 נויה</button>
-              <br><br>
-              <button class="secondary" onclick="home()">חזרה</button>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    function login(role){
-      document.getElementById("app").innerHTML = `
-        <div class="card app-shimmer">
-          <h2>${parentLabel(role)}</h2>
-          <input id="pass" type="password" placeholder="הכנס סיסמה">
-          <br>
-          <button onclick="checkLogin('${role}')">כניסה</button>
-          <br><br>
-          <button class="secondary" onclick="home()">חזרה</button>
-        </div>
-      `;
-    }
-
-    function checkLogin(role){
-      var pass = document.getElementById("pass").value;
-      if(role === "father" && pass === MASTER_PASSWORD){
-        masterView();
-        return;
-      }
-      if(pass !== PASSWORDS[role]){
-        alert(funnyWrongPassword());
-        return;
-      }
-      parent(role);
-    }
-
-    function childLogin(id){
-      var messages = [
-        `שלום ${childLabel(id)} 🌟`,
-        `איזה כיף שחזרת ${childLabel(id)} 🎉`,
-        `${childLabel(id)}, מוכן לראות כמה כוכבים קיבלת? ⭐`,
-        `ברוך הבא ${childLabel(id)} ✨`
-      ];
-      var message = messages[Math.floor(Math.random() * messages.length)];
-      var extraIcons = id === "noya" ? "🦋 🌈 💖 ⭐ ✨" : id === "itai" ? "🐻 🚀 ⭐ 🎈 ✨" : id === "meir" ? "🦁 ⭐ 🏆 🎉 ✨" : "🐯 🌟 🎈 ⭐ 💫";
-
-      document.getElementById("app").innerHTML = `
-        <div class="card welcome-stage app-shimmer">
-          <div class="badge floaty">${childEmoji(id)}</div>
-          <div class="welcome-title">${message}</div>
-          <div class="welcome-sub">הכנס את הסיסמה שלך וניכנס לעולם הכוכבים</div>
-          <div class="welcome-pill">יש הפתעות, יעדים ופרסים שמחכים לך 🎁</div>
-          <div class="floating-icons">
-            ${extraIcons.split(' ').map(icon => `<span>${icon}</span>`).join('')}
-          </div>
-          <div style="margin-top:18px;">
-            <input id="childPass" type="password" placeholder="הסיסמה שלך">
-            <div style="margin-top:6px; font-size:14px; color:#6b7280;">
-              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="checkbox" onchange="togglePasswordVisibility('childPass', this)">
-                הצג סיסמה
-              </label>
-            </div>
-            <button onclick="checkChildLogin('${id}')">כניסה</button>
-            <br><br>
-            <button class="secondary" onclick="${(id === 'itai' || id === 'noya') ? 'showMoreKids()' : 'home()'}">חזרה</button>
-          </div>
-        </div>
-      `;
-    }
-
-    function checkChildLogin(id){
-      var pass = document.getElementById("childPass").value;
-      if(pass !== CHILD_PASSWORDS[id]){
-        alert(funnyWrongPassword());
-        return;
-      }
-      child(id);
-    }
-
-    function masterView(){
-      document.getElementById("app").innerHTML = `
-        <div class="card">
-          <h2>🔐 גישת מאסטר</h2>
-          <p><strong>סיסמת אבא:</strong> ${PASSWORDS.father}</p>
-          <p><strong>סיסמת אמא:</strong> ${PASSWORDS.mother}</p>
-          <p><strong>סיסמת סבתא שמחה:</strong> ${PASSWORDS.grandma}</p>
-          <p><strong>סיסמת מאיר:</strong> ${CHILD_PASSWORDS.meir}</p>
-          <p><strong>סיסמת לביא:</strong> ${CHILD_PASSWORDS.lavi}</p>
-          <p><strong>סיסמת איתי:</strong> ${CHILD_PASSWORDS.itai}</p>
-          <p><strong>סיסמת נויה:</strong> ${CHILD_PASSWORDS.noya}</p>
-          <p class="small">רק אבא יכול לראות את כל הסיסמאות דרך סיסמת המאסטר</p>
-          <br>
-          <button class="secondary" onclick="home()">חזרה</button>
-        </div>
-      `;
-    }
-
-    function buildGoalCard(title, current, target, reward, roleKey){
-      var percent = Math.min(100, (current / Math.max(1, target)) * 100);
-      var colorClass = roleKey === "total" ? "total" : getParentColorClass(roleKey);
-      var barClass = roleKey === "total" ? "bar-total" : getParentBarClass(roleKey);
-      var tipClass = roleKey === "total" ? "tip total" : getParentTipClass(roleKey);
-      return `
-        <div class="goal ${colorClass} ${percent >= 90 && current < target ? 'pulse-close' : ''}">
-          <div class="big" style="font-size:22px">🎯 ${title}</div>
-          <div><strong>${current}</strong> מתוך <strong>${target}</strong></div>
-          <div class="progress"><div class="${barClass}" style="width:${percent}%"></div></div>
-          <div class="small">נשארו עוד ${Math.max(0, target - current)} כוכבים</div>
-          <div class="reward">🎁 ${reward || 'עדיין לא הוגדרה מתנה'}</div>
-          ${current >= target ? `<div class="win">כל הכבוד! הגעת ליעד 🎉</div>` : `<div class="${tipClass}">${encouragementText(current, target, title)}</div>`}
-        </div>
-      `;
-    }
-
-    function renderShopForChild(id, data){
-      if(!APP_SETTINGS.sharedShop.length){
-        return '<div class="small">החנות עדיין ריקה</div>';
-      }
-
-      var pendingShopRequests = (data && data.pendingShopRequests) || [];
-      return APP_SETTINGS.sharedShop.map(function(item, index){
-        var isPending = pendingShopRequests.some(function(req){
-          return req.itemIndex === index && req.status === 'pending';
-        });
-        return `
-          <div class="shop-line">
-            <div><strong>${item.name}</strong> • ${item.price} כוכבים</div>
-            ${isPending
-              ? `<button class="shop mini secondary" disabled>ממתין לאישור ⏳</button>`
-              : `<button class="shop mini" onclick="requestShopPurchase('${id}', ${index})">ממש</button>`}
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderQuickTaskButtons(id, data){
-      var roles = getAllowedRolesForChild(id);
-      var pendingTasks = (data && data.pendingTasks) || [];
-      var html = [];
-      roles.forEach(function(role){
-        var tasks = getPresetTasks(role, id);
-        tasks.forEach(function(task, index){
-          var isPending = pendingTasks.some(function(pt){
-            return pt.role === role && pt.taskIndex === index && pt.status === 'pending';
-          });
-          if(isPending){
-            html.push(`<button class="mini secondary" disabled>${task.name} • ממתין לבדיקה ⏳</button>`);
-          } else {
-            html.push(`<button class="mini ${role}" onclick="requestQuickTask('${id}', '${role}', ${index})">${task.name} +${task.stars}</button>`);
-          }
-        });
-      });
-      return html.length ? html.join('') : '<div class="small">אין משימות מוכנות עדיין לילד הזה</div>';
-    }
-
-    function renderPendingStatusForChild(id, data){
-      var pendingTasks = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending'; });
-      var pendingShopRequests = (data.pendingShopRequests || []).filter(function(req){ return req.status === 'pending'; });
-      var customRewardRequests = (data.customRewardRequests || []).slice().sort(function(a,b){ return safeNumber(b.requestedAtMillis || b.resolvedAtMillis) - safeNumber(a.requestedAtMillis || a.resolvedAtMillis); });
-      var parts = [];
-      pendingTasks.forEach(function(pt){
-        parts.push(`<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`);
-      });
-      pendingShopRequests.forEach(function(req){
-        parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מימוש פרס</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}</div></div>`);
-      });
-      customRewardRequests.forEach(function(req){
-        var details = '';
-        if(req.status === 'pending'){
-          details = 'ממתין לאישור ⏳';
-          if((req.rejections || []).length){
-            details += ' • סירבו בינתיים: ' + formatApproverNames(req.rejections);
-          }
-        } else if(req.status === 'approved'){
-          details = 'אושר על ידי ' + parentLabel(req.approvedBy) + ' ✅';
-        } else if(req.status === 'rejected'){
-          details = 'נדחה ❌';
-          if((req.rejections || []).length){
-            details += ' • סירבו: ' + formatApproverNames(req.rejections);
-          }
-        }
-        parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת פרס מיוחד</div><div class="small">${details} • ${req.requestedAtText || req.resolvedAtText || ''}</div></div>`);
-      });
-      return parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לבדיקה כרגע</div>';
-    }
-
-
-
-    function renderChildNotifications(id, data){
-      var notifications = (data.childNotifications || []);
-      if(!notifications.length){
-        return '<div class="small">אין התראות חדשות כרגע</div>';
-      }
-      return notifications.map(function(item){
-        return `
-          <div class="notification-line">
-            <div><strong>${item.message}</strong><div class="small">${item.createdAtText || ''}</div></div>
-            <button class="mini secondary" onclick="dismissChildNotification('${id}','${item.id}')">סגור</button>
-          </div>
-        `;
-      }).join('');
-    }
-
-    async function dismissChildNotification(childId, notificationId){
-      var data = await getChildData(childId);
-      data.childNotifications = (data.childNotifications || []).filter(function(item){ return item.id !== notificationId; });
-      await saveChildData(childId, data);
-      child(childId);
-    }
-
-    function renderShopManager(){
-      if(!APP_SETTINGS.sharedShop.length){
-        return '<div class="small">אין פרסים בחנות עדיין</div>';
-      }
-
-      return APP_SETTINGS.sharedShop.map(function(item, index){
-        return `
-          <div class="shop-line">
-            <div><strong>${item.name}</strong> • ${item.price} כוכבים</div>
-            <button class="danger mini" onclick="removeShopItem(${index})">מחק</button>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function renderTaskManager(role, childId){
-      var tasks = getPresetTasks(role, childId);
-      if(!tasks.length){
-        return '<div class="small">אין משימות מוכנות עדיין לילד הזה</div>';
-      }
-
-      return tasks.map(function(task, index){
-        return `
-          <div class="task-line">
-            <div><strong>${task.name}</strong> • ${task.stars} כוכבים</div>
-            <button class="danger mini" onclick="removePresetTask('${role}', '${childId}', ${index})">מחק</button>
-          </div>
-        `;
-      }).join('');
-    }
-
-    async function child(id){
-      var data = await getChildData(id);
-      var father = safeNumber(data.father);
-      var mother = safeNumber(data.mother);
-      var grandma = safeNumber(data.grandma);
-      var targetFather = safeNumber(data.targetFather) || 100;
-      var targetMother = safeNumber(data.targetMother) || 100;
-      var targetGrandma = safeNumber(data.targetGrandma) || 100;
-      var totalCurrent = getCurrentTotal(data, id);
-      var totalTarget = getCurrentTargetTotal(data, id);
-      var totalLevel = calcLevel(data, id);
-      var totalPercent = calcOverallPercent(data, id);
-      var logs = data.logs || [];
-      var pendingTasks = data.pendingTasks || [];
-      var pendingShopRequests = data.pendingShopRequests || [];
-      var childNotifications = data.childNotifications || [];
-      var customRewardRequests = data.customRewardRequests || [];
-      var latest = logs.length ? logs[0] : null;
-      var showBurst = latest && latest.action === "add";
-      var burstParent = showBurst ? parentLabel(latest.parent) : "";
-      var burstAmount = showBurst ? safeNumber(latest.amount) : 0;
-      var burstNote = showBurst ? (latest.note || "") : "";
-      var isMotherOnly = id === "itai" || id === "noya";
-
-      var logsHtml = "";
-      logs.slice(0,30).forEach(function(item){
-        if(isMotherOnly && item.parent === "father") return;
-        if(isMotherOnly && item.parent === "grandma") return;
-        var parentText = parentLabel(item.parent);
-        var amountText = item.amount ? (" • כוכבים: " + item.amount) : "";
-        logsHtml += `
-          <div class="log-item" style="background:${item.parent === 'mother' ? '#fff1f2' : item.parent === 'grandma' ? '#f5f3ff' : '#eef6ff'}; border:2px dashed ${item.parent === 'mother' ? '#f9a8d4' : item.parent === 'grandma' ? '#c4b5fd' : '#93c5fd'}; border-radius:18px;">
-            <div><strong>${parentText}</strong> • ${actionLabel(item.action)}${amountText}</div>
-            <div>${item.note || ""}</div>
-            <div class="small">${item.createdAtText || ""}</div>
-          </div>
-        `;
-      });
-
-      var burstHtml = "";
-      if(showBurst){
-        burstHtml = `
-          <div class="star-burst">
-            <div class="star-celebration shine-card">🎉 קיבלת ${burstAmount} כוכב${burstAmount > 1 ? "ים" : ""} מ${burstParent}${burstNote ? " • " + burstNote : ""}</div>
-            <div class="star-rain">
-              <span style="right:6%">⭐</span>
-              <span style="right:18%;animation-delay:.12s">✨</span>
-              <span style="right:30%;animation-delay:.24s">⭐</span>
-              <span style="right:42%;animation-delay:.06s">🌟</span>
-              <span style="right:54%;animation-delay:.18s">⭐</span>
-              <span style="right:66%;animation-delay:.30s">✨</span>
-              <span style="right:78%;animation-delay:.10s">🌟</span>
-              <span style="right:90%;animation-delay:.22s">⭐</span>
-            </div>
-          </div>
-        `;
-      }
-
-      var totalCardHtml = `
-        <div class="stat total stats-total-top shine-card">
-          <div class="stat-label">כל הכוכבים שלך ⭐</div>
-          <div class="big pop-number">${totalCurrent}</div>
-          <div class="stat-sub">${totalPercent}% מהיעד הכולל</div>
-          <div class="level-chip">${totalLevel}</div>
-        </div>
-      `;
-      var statsHtml = "";
-      var goalsHtml = buildGoalCard("היעד הכולל שלך", totalCurrent, totalTarget, "כל הפרסים בדרך", "total");
-
-      if(!isMotherOnly){
-        statsHtml += `
-          <div class="stat f ${showBurst && latest && latest.parent === 'father' ? 'shine-card' : ''}">
-            <div class="stat-label">כוכבים מאבא</div>
-            <div class="big ${showBurst && latest && latest.parent === 'father' ? 'pop-number' : ''}">${father}</div>
-          </div>
-        `;
-        goalsHtml += buildGoalCard("היעד של אבא", father, targetFather, data.rewardFather, "father");
-      }
-
-      statsHtml += `
-        <div class="stat m ${showBurst && latest && latest.parent === 'mother' ? 'shine-card' : ''}">
-          <div class="stat-label">${isMotherOnly ? 'הכוכבים שלך מאמא' : 'כוכבים מאמא'}</div>
-          <div class="big ${showBurst && latest && latest.parent === 'mother' ? 'pop-number' : ''}">${mother}</div>
-        </div>
-      `;
-      goalsHtml += buildGoalCard(isMotherOnly ? "היעד שלך מאמא" : "היעד של אמא", mother, targetMother, data.rewardMother, "mother");
-
-      if(!isMotherOnly){
-        statsHtml += `
-          <div class="stat g ${showBurst && latest && latest.parent === 'grandma' ? 'shine-card' : ''}">
-            <div class="stat-label">כוכבים מסבתא שמחה</div>
-            <div class="big ${showBurst && latest && latest.parent === 'grandma' ? 'pop-number' : ''}">${grandma}</div>
-          </div>
-        `;
-        goalsHtml += buildGoalCard("היעד של סבתא שמחה", grandma, targetGrandma, data.rewardGrandma, "grandma");
-      }
-
-      document.getElementById("app").innerHTML = `
-        <div class="kid-card card" style="background:linear-gradient(180deg,#fffdf5,#fff1f2); border:3px solid #fde68a; box-shadow:0 16px 34px rgba(251,113,133,.14);">
-          <div class="badge floaty" style="box-shadow:0 16px 28px rgba(251,113,133,.22), 0 0 0 8px rgba(255,255,255,.65);">${childEmoji(id)}</div>
-          <div style="font-size:22px; margin-bottom:4px;">🌈 ✨ 🎈</div>
-          <h2 class="kid-title" style="color:#be185d; text-shadow:0 2px 0 rgba(255,255,255,.9);">${childLabel(id)}</h2>
-          <div class="kid-sub" style="font-size:15px;">${buildLevelMessage(data, id)}</div>
-
-          ${burstHtml}
-
-          ${totalCardHtml}
-
-          <div class="stats-grid-parents">${statsHtml}</div>
-          ${goalsHtml}
-
-          <div class="card notification-card">
-            <h3 style="margin-top:0">🔔 התראות</h3>
-            ${renderChildNotifications(id, data)}
-          </div>
-
-          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac; border-radius:24px;">
-            <h3 style="margin-top:0">⚡ משימות מוכנות</h3>
-            <div class="task-btn-wrap">${renderQuickTaskButtons(id, data)}</div>
-          </div>
-
-          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fdba74; border-radius:24px; text-align:right;">
-            <h3 style="margin-top:0">⏳ ממתין לבדיקה</h3>
-            ${renderPendingStatusForChild(id, data)}
-          </div>
-
-          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; border-radius:24px; text-align:right;">
-            <h3 style="margin-top:0">🛒 חנות הפרסים</h3>
-            ${renderShopForChild(id, data)}
-          </div>
-
-          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#eef2ff); border:2px dashed #a5b4fc; border-radius:24px; text-align:right;">
-            <h3 style="margin-top:0">💡 תציעו פרס חדש</h3>
-            <div class="small">כתוב מה אתה רוצה וכמה כוכבים אתה מציע לשלם</div>
-            <input id="customRewardName" placeholder="מה בא לך לקבל?" style="width:90%;">
-            <input id="customRewardPrice" type="number" placeholder="כמה כוכבים אתה מציע?" style="width:90%;">
-            <br>
-            <button class="shop" onclick="requestCustomReward('${id}')">שלח בקשה להורים</button>
-          </div>
-
-          <div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d; border-radius:24px;">
-            <h3 style="margin-top:0">📝 על מה קיבלת כוכבים</h3>
-            ${logsHtml || '<div class="small">עדיין אין פעולות על הכוכבים שלך</div>'}
-          </div>
-
-          <div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#eef2ff); border:2px dashed #c4b5fd; border-radius:24px;">
-            <h3 style="margin-top:0">🔐 שינוי הסיסמה שלך</h3>
-            <div class="small">רק אתה יכול לשנות את הסיסמה שלך</div>
-            <input id="kidNewPass" type="password" placeholder="סיסמה חדשה">
-            <div style="margin-top:6px; font-size:14px; color:#6b7280;">
-              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
-                <input type="checkbox" onchange="togglePasswordVisibility('kidNewPass', this)">
-                הצג סיסמה
-              </label>
-            </div>
-            <br><button onclick="changeOwnChildPassword('${id}')">שמור סיסמה חדשה</button>
-          </div>
-
-          <div style="margin-top:14px"><button class="secondary" onclick="${(id === 'itai' || id === 'noya') ? 'showMoreKids()' : 'home()'}">חזרה</button></div>
-        </div>
-      `;
-    }
-
-    async function requestCustomReward(childId){
-      var itemName = (document.getElementById('customRewardName') || {}).value || '';
-      var price = Number((document.getElementById('customRewardPrice') || {}).value);
-      itemName = itemName.trim();
-      if(!itemName || !price || price < 1){
-        alert('תכתוב מה אתה רוצה וכמה כוכבים אתה מציע');
-        return;
-      }
-
-      var data = await getChildData(childId);
-      data.customRewardRequests = data.customRewardRequests || [];
-      var existsPending = data.customRewardRequests.some(function(req){
-        return req.status === 'pending' && req.itemName === itemName && safeNumber(req.price) === safeNumber(price);
-      });
-      if(existsPending){
-        alert('כבר יש בקשה כזאת שמחכה לאישור ⏳');
-        return;
-      }
-
-      data.customRewardRequests.unshift({
-        id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-        itemName: itemName,
-        price: safeNumber(price),
-        status: 'pending',
-        rejections: [],
-        approvedBy: null,
-        requestedAtText: nowText(),
-        requestedAtMillis: Date.now(),
-        resolvedAtText: ''
-      });
-
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: 'mother',
-        action: 'custom_reward_pending',
-        amount: safeNumber(price),
-        note: 'בקשת פרס: ' + itemName,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      await saveChildData(childId, data);
-      alert('הבקשה נשלחה להורים ✅');
-      child(childId);
-    }
-
-    async function approveCustomReward(childId, requestId){
-      var data = await getChildData(childId);
-      data.customRewardRequests = data.customRewardRequests || [];
-      var idx = data.customRewardRequests.findIndex(function(req){ return req.id === requestId; });
-      if(idx === -1) return;
-      var req = data.customRewardRequests[idx];
-      if(req.status !== 'pending') return;
-      var allowed = getAllowedRolesForChild(childId);
-      if(allowed.indexOf(user) === -1){
-        alert('אין לך הרשאה לאשר את הבקשה הזאת');
-        return;
-      }
-
-      var total = getCurrentTotal(data, childId);
-      if(total < safeNumber(req.price)){
-        alert('אין מספיק כוכבים כרגע כדי לאשר את הבקשה הזאת');
-        return;
-      }
-
-      deductStarsFromChild(data, childId, req.price);
-      req.status = 'approved';
-      req.approvedBy = user;
-      req.resolvedAtText = nowText();
-
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: 'custom_reward_approved',
-        amount: safeNumber(req.price),
-        note: 'אושר פרס מיוחד: ' + req.itemName,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      pushChildNotification(data, 'success', parentLabel(user) + ' אישר לך: ' + req.itemName + ' ✅');
-      await saveChildData(childId, data);
-      alert('הבקשה אושרה והכוכבים עודכנו');
-      parent(user);
-    }
-
-    async function rejectCustomReward(childId, requestId){
-      var data = await getChildData(childId);
-      data.customRewardRequests = data.customRewardRequests || [];
-      var idx = data.customRewardRequests.findIndex(function(req){ return req.id === requestId; });
-      if(idx === -1) return;
-      var req = data.customRewardRequests[idx];
-      if(req.status !== 'pending') return;
-      var allowed = getAllowedRolesForChild(childId);
-      if(allowed.indexOf(user) === -1){
-        alert('אין לך הרשאה לדחות את הבקשה הזאת');
-        return;
-      }
-      req.rejections = req.rejections || [];
-      if(req.rejections.indexOf(user) !== -1){
-        alert('כבר סירבת לבקשה הזאת');
-        return;
-      }
-      req.rejections.push(user);
-      var allRejected = allowed.every(function(role){ return req.rejections.indexOf(role) !== -1; });
-      if(allRejected){
-        req.status = 'rejected';
-        req.resolvedAtText = nowText();
-        pushChildNotification(data, 'error', 'הבקשה לפרס נדחתה: ' + req.itemName + ' ❌');
-      }
-
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: 'custom_reward_rejected',
-        amount: safeNumber(req.price),
-        note: allRejected ? ('נדחתה סופית בקשת פרס: ' + req.itemName) : ('סירוב חלקי לבקשת פרס: ' + req.itemName),
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      await saveChildData(childId, data);
-      alert(allRejected ? 'כל ההורים הרלוונטיים סירבו לבקשה' : 'הסירוב נשמר. הבקשה עדיין פתוחה לאחרים');
-      parent(user);
-    }
-
-async function requestShopPurchase(id, itemIndex){
-      var item = APP_SETTINGS.sharedShop[itemIndex];
-      if(!item) return;
-
-      var data = await getChildData(id);
-      var total = getCurrentTotal(data, id);
-      if(total < safeNumber(item.price)){
-        alert("אין מספיק כוכבים בשביל הפרס הזה 😅");
-        return;
-      }
-
-      data.pendingShopRequests = data.pendingShopRequests || [];
-      var alreadyPending = data.pendingShopRequests.some(function(req){
-        return req.itemIndex === itemIndex && req.status === 'pending';
-      });
-      if(alreadyPending){
-        alert('הפרס הזה כבר ממתין לאישור ⏳');
-        return;
-      }
-
-      data.pendingShopRequests.unshift({
-        id: 'shop_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-        itemIndex: itemIndex,
-        itemName: item.name,
-        price: safeNumber(item.price),
-        status: 'pending',
-        requestedAtText: nowText(),
-        requestedAtMillis: Date.now()
-      });
-
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: 'mother',
-        action: 'shop_pending',
-        amount: safeNumber(item.price),
-        note: 'בקשה למימוש פרס: ' + item.name,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-
-      await saveChildData(id, data);
-      alert('הבקשה נשלחה לאישור ההורים 🎁');
-      child(id);
-    }
-
-    async function approvePendingShop(childId, requestId){
-      var data = await getChildData(childId);
-      data.pendingShopRequests = data.pendingShopRequests || [];
-      var idx = data.pendingShopRequests.findIndex(function(req){ return req.id === requestId; });
-      if(idx === -1) return;
-      var req = data.pendingShopRequests[idx];
-      if(req.status !== 'pending') return;
-
-      if((childId === 'itai' || childId === 'noya') && user !== 'mother'){
-        alert('לילדים האלה רק אמא יכולה לאשר מימוש פרס');
-        return;
-      }
-
-      var total = getCurrentTotal(data, childId);
-      if(total < safeNumber(req.price)){
-        data.pendingShopRequests.splice(idx,1);
-        var logsFail = data.logs || [];
-        logsFail.unshift({
-          parent: user,
-          action: 'shop_rejected',
-          amount: safeNumber(req.price),
-          note: 'אין מספיק כוכבים לפרס: ' + req.itemName,
-          createdAtText: nowText(),
-          createdAtMillis: Date.now()
-        });
-        data.logs = logsFail.slice(0,100);
-        pushChildNotification(data, 'error', 'לא אושר הפרס: ' + req.itemName + ' ❌');
-        await saveChildData(childId, data);
-        alert('לא ניתן לאשר, אין מספיק כוכבים כרגע');
-        parent(user);
-        return;
-      }
-
-      var price = safeNumber(req.price);
-      deductStarsFromChild(data, childId, price);
-
-      data.pendingShopRequests.splice(idx,1);
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: 'shop_approved',
-        amount: price,
-        note: 'אושר מימוש פרס: ' + req.itemName,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      pushChildNotification(data, 'success', 'אושר לך פרס: ' + req.itemName + ' ✅');
-      await saveChildData(childId, data);
-      alert('הפרס אושר והכוכבים עודכנו 🎉');
-      parent(user);
-    }
-
-    async function rejectPendingShop(childId, requestId){
-      var data = await getChildData(childId);
-      data.pendingShopRequests = data.pendingShopRequests || [];
-      var idx = data.pendingShopRequests.findIndex(function(req){ return req.id === requestId; });
-      if(idx === -1) return;
-      var req = data.pendingShopRequests[idx];
-      if(req.status !== 'pending') return;
-      if((childId === 'itai' || childId === 'noya') && user !== 'mother'){
-        alert('לילדים האלה רק אמא יכולה לדחות מימוש פרס');
-        return;
-      }
-
-      data.pendingShopRequests.splice(idx,1);
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: user,
-        action: 'shop_rejected',
-        amount: safeNumber(req.price),
-        note: 'נדחתה בקשת פרס: ' + req.itemName,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      pushChildNotification(data, 'error', 'הפרס נדחה: ' + req.itemName + ' ❌');
-      await saveChildData(childId, data);
-      alert('הבקשה לפרס נדחתה');
-      parent(user);
-    }
-
-    async function requestQuickTask(childId, role, taskIndex){
-      var task = getPresetTasks(role, childId)[taskIndex];
-      if(!task) return;
-
-      var data = await getChildData(childId);
-      data.pendingTasks = data.pendingTasks || [];
-      var exists = data.pendingTasks.some(function(pt){
-        return pt.role === role && pt.taskIndex === taskIndex && pt.status === 'pending';
-      });
-      if(exists){
-        alert('המשימה הזאת כבר ממתינה לבדיקה ⏳');
-        return;
-      }
-
-      data.pendingTasks.unshift({
-        id: 'pt_' + Date.now() + '_' + Math.floor(Math.random()*100000),
-        role: role,
-        taskIndex: taskIndex,
-        taskName: task.name,
-        stars: safeNumber(task.stars),
-        status: 'pending',
-        requestedAtText: nowText(),
-        requestedAtMillis: Date.now()
-      });
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: role,
-        action: 'task_pending',
-        amount: safeNumber(task.stars),
-        note: task.name,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      await saveChildData(childId, data);
-      alert('המשימה נשלחה לבדיקה ✅');
-      child(childId);
-    }
-
-    async function approvePendingTask(childId, taskId){
-      var data = await getChildData(childId);
-      data.pendingTasks = data.pendingTasks || [];
-      var idx = data.pendingTasks.findIndex(function(pt){ return pt.id === taskId; });
-      if(idx === -1) return;
-      var pt = data.pendingTasks[idx];
-      if(pt.role !== user){
-        alert('אפשר לאשר רק משימות שלך');
-        return;
-      }
-      if(pt.role === 'father') data.father = safeNumber(data.father) + safeNumber(pt.stars);
-      if(pt.role === 'mother') data.mother = safeNumber(data.mother) + safeNumber(pt.stars);
-      if(pt.role === 'grandma') data.grandma = safeNumber(data.grandma) + safeNumber(pt.stars);
-      data.pendingTasks.splice(idx,1);
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: pt.role,
-        action: 'task_approved',
-        amount: safeNumber(pt.stars),
-        note: pt.taskName,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      pushChildNotification(data, 'success', 'המשימה אושרה: ' + pt.taskName + ' ✅');
-      await saveChildData(childId, data);
-      alert('המשימה אושרה והכוכבים נוספו 🌟');
-      parent(user);
-    }
-
-    async function rejectPendingTask(childId, taskId){
-      var data = await getChildData(childId);
-      data.pendingTasks = data.pendingTasks || [];
-      var idx = data.pendingTasks.findIndex(function(pt){ return pt.id === taskId; });
-      if(idx === -1) return;
-      var pt = data.pendingTasks[idx];
-      if(pt.role !== user){
-        alert('אפשר לדחות רק משימות שלך');
-        return;
-      }
-      data.pendingTasks.splice(idx,1);
-      var logs = data.logs || [];
-      logs.unshift({
-        parent: pt.role,
-        action: 'task_rejected',
-        amount: safeNumber(pt.stars),
-        note: pt.taskName,
-        createdAtText: nowText(),
-        createdAtMillis: Date.now()
-      });
-      data.logs = logs.slice(0,100);
-      pushChildNotification(data, 'error', 'המשימה לא אושרה: ' + pt.taskName + ' ❌');
-      await saveChildData(childId, data);
-      alert('המשימה נדחתה');
-      parent(user);
-    }
-
-    async function loadPendingApprovals(role){
-      var ids = role === 'father' ? ['meir','lavi'] : role === 'mother' ? ['meir','lavi','itai','noya'] : ['meir','lavi'];
-      var parts = [];
-      for(var i=0;i<ids.length;i++){
-        var id = ids[i];
-        var data = await getChildData(id);
-        var pendingTasks = (data.pendingTasks || []).filter(function(pt){ return pt.status === 'pending' && pt.role === role; });
-        pendingTasks.forEach(function(pt){
-          parts.push(`
-            <div class="task-line">
-              <div><strong>${childLabel(id)}</strong> • ${pt.taskName} • ${pt.stars} כוכבים<div class="small">${pt.requestedAtText || ''}</div></div>
-              <div>
-                <button class="mini" onclick="approvePendingTask('${id}','${pt.id}')">אשר</button>
-                <button class="danger mini" onclick="rejectPendingTask('${id}','${pt.id}')">דחה</button>
-              </div>
-            </div>
-          `);
-        });
-
-        var pendingShop = (data.pendingShopRequests || []).filter(function(req){ return req.status === 'pending'; });
-        pendingShop.forEach(function(req){
-          parts.push(`
-            <div class="task-line">
-              <div><strong>${childLabel(id)}</strong> • בקשת פרס: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText || ''}</div></div>
-              <div>
-                <button class="mini shop" onclick="approvePendingShop('${id}','${req.id}')">אשר פרס</button>
-                <button class="danger mini" onclick="rejectPendingShop('${id}','${req.id}')">דחה</button>
-              </div>
-            </div>
-          `);
-        });
-
-        var pendingCustom = (data.customRewardRequests || []).filter(function(req){
-          return req.status === 'pending' && getAllowedRolesForChild(id).indexOf(role) !== -1 && (req.rejections || []).indexOf(role) === -1;
-        });
-        pendingCustom.forEach(function(req){
-          var rejectedText = (req.rejections || []).length ? (' • כבר סירבו: ' + formatApproverNames(req.rejections)) : '';
-          parts.push(`
-            <div class="task-line">
-              <div><strong>${childLabel(id)}</strong> • בקשה מיוחדת: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText || ''}${rejectedText}</div></div>
-              <div>
-                <button class="mini shop" onclick="approveCustomReward('${id}','${req.id}')">אשר בקשה</button>
-                <button class="danger mini" onclick="rejectCustomReward('${id}','${req.id}')">סרב</button>
-              </div>
-            </div>
-          `);
-        });
-      }
-      var el = document.getElementById('pendingApprovals');
-      if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לאישור כרגע</div>';
-    }
-
-
-    async function loadParentSummary(role){
-      var ids = role === "father" ? ["meir","lavi"] : role === "mother" ? ["meir","lavi","itai","noya"] : ["meir","lavi"];
-      var html = "";
-
-      for(var i = 0; i < ids.length; i++){
-        var id = ids[i];
-        var data = await getChildData(id);
-        var total = getCurrentTotal(data, id);
-        var target = getCurrentTargetTotal(data, id);
-        var level = calcLevel(data, id);
-        var logs = data.logs || [];
-        var logsHtml = "";
-
-        logs.slice(0,30).forEach(function(item){
-          if((id === "itai" || id === "noya") && item.parent === "father") return;
-          if((id === "itai" || id === "noya") && item.parent === "grandma") return;
-
-          var parentText = parentLabel(item.parent);
-          var amountText = item.amount ? (" • " + item.amount + " כוכבים") : "";
-          var bg = item.parent === 'mother' ? '#fff1f2' : item.parent === 'grandma' ? '#f5f3ff' : '#eef6ff';
-          var border = item.parent === 'mother' ? '#fecdd3' : item.parent === 'grandma' ? '#ddd6fe' : '#bfdbfe';
-
-          logsHtml += `
-            <div class="log-item" style="margin:6px 0; padding:8px; font-size:13px; background:${bg}; border-color:${border};">
-              <div><strong>${parentText}</strong> • ${actionLabel(item.action)}${amountText}</div>
-              <div>${item.note || ""}</div>
-              <div class="small">${item.createdAtText || ""}</div>
-            </div>
-          `;
-        });
-
-        html += `
-          <div class="summary-card">
-            <div style="font-size:22px;margin-bottom:8px">${childEmoji(id)} <strong>${childLabel(id)}</strong></div>
-            <div><strong>סה״כ:</strong> ${total} / יעד ${target}</div>
-            <div class="level-chip">${level}</div>
-            ${id !== 'itai' && id !== 'noya' ? `<div><strong>מאבא:</strong> ${safeNumber(data.father)} / יעד ${safeNumber(data.targetFather) || 100}</div>` : ''}
-            <div><strong>מאמא:</strong> ${safeNumber(data.mother)} / יעד ${safeNumber(data.targetMother) || 100}</div>
-            ${id !== 'itai' && id !== 'noya' ? `<div><strong>מסבתא:</strong> ${safeNumber(data.grandma)} / יעד ${safeNumber(data.targetGrandma) || 100}</div>` : ''}
-            <div class="logs-title">לוגים</div>
-            <div class="logs-box">
-              ${logsHtml || '<div class="small" style="text-align:center; padding:8px 0;">אין לוגים עדיין</div>'}
-            </div>
-          </div>
-        `;
-      }
-
-      var el = document.getElementById("parentSummary");
-      if(el){ el.innerHTML = html; }
-    }
-
-    function renderPresetTasksEditor(role){
-      var childId = getSelectedChild();
-      var tasks = getPresetTasks(role, childId);
-      return `
-        <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f0fdf4);">
-          <h3 style="margin-top:0">משימות מוכנות של ${parentLabel(role)} עבור ${childLabel(childId)}</h3>
-          <div class="small">המשימות כאן אישיות לילד שנבחר כרגע • אפשר לשמור עד 3</div>
-          <input id="taskName" placeholder="שם המשימה" style="width:90%;">
-          <input id="taskStars" type="number" placeholder="כמה כוכבים" style="width:90%;">
-          <br>
-          <button onclick="addPresetTask('${role}')">שמור משימה</button>
-          <div style="margin-top:10px; text-align:right;">${renderTaskManager(role, childId)}</div>
-          <div class="task-btn-wrap" style="margin-top:12px;">${tasks.map(function(task, i){ return `<button class="mini ${role}" onclick="applyPresetTaskFromParent('${role}', ${i})">${task.name} +${task.stars}</button>`; }).join('') || '<div class="small">אין משימות מוכנות ללחיצה מהירה לילד הזה</div>'}</div>
-        </div>
-      `;
-    }
-
-    function renderShopEditor(){
-      return `
-        <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#ecfdf5);">
-          <h3 style="margin-top:0">ניהול חנות פרסים משותפת</h3>
-          <input id="shopName" placeholder="שם הפרס" style="width:90%;">
-          <input id="shopPrice" type="number" placeholder="מחיר בכוכבים" style="width:90%;">
-          <br>
-          <button class="shop" onclick="addShopItem()">הוסף פרס</button>
-          <div style="margin-top:10px; text-align:right;">${renderShopManager()}</div>
-        </div>
-      `;
-    }
-
-    function parent(role){
-      user = role;
-      var passwordsBlock = "";
-      var adminBlock = "";
-      var childRadioOptions = "";
-
-      if(role === "father"){
-        childRadioOptions = `
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" ${SELECTED_PARENT_CHILD.father === 'meir' ? 'checked' : ''} onchange="setSelectedChild('father','meir')"> מאיר</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi" ${SELECTED_PARENT_CHILD.father === 'lavi' ? 'checked' : ''} onchange="setSelectedChild('father','lavi')"> לביא</label>
-        `;
-        passwordsBlock = `
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-              <h3 style="margin:0">הסיסמאות של כולם</h3>
-              <button onclick="togglePasswordsPanel()">הצג / הסתר סיסמאות</button>
-            </div>
-            <div id="passwordsPanel" style="display:none; max-height:380px; overflow:auto; border:1px solid #e5e7eb; border-radius:18px; padding:10px; background:#fff; margin-top:12px;">
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אבא</strong><div style="margin-top:6px">${PASSWORDS.father}</div><input id="passFather" placeholder="סיסמה חדשה לאבא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificPassword('father','passFather')">שמור סיסמה</button></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>אמא</strong><div style="margin-top:6px">${PASSWORDS.mother}</div><input id="passMother" placeholder="סיסמה חדשה לאמא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificPassword('mother','passMother')">שמור סיסמה</button></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>סבתא שמחה</strong><div style="margin-top:6px">${PASSWORDS.grandma}</div><input id="passGrandma" placeholder="סיסמה חדשה לסבתא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificPassword('grandma','passGrandma')">שמור סיסמה</button></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>מאיר</strong><div style="margin-top:6px">${CHILD_PASSWORDS.meir}</div><input id="passMeir" placeholder="סיסמה חדשה למאיר" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('meir','passMeir')">שמור סיסמה</button></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>לביא</strong><div style="margin-top:6px">${CHILD_PASSWORDS.lavi}</div><input id="passLavi" placeholder="סיסמה חדשה ללביא" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('lavi','passLavi')">שמור סיסמה</button></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none; margin-bottom:10px;"><strong>איתי</strong><div style="margin-top:6px">${CHILD_PASSWORDS.itai}</div><input id="passItai" placeholder="סיסמה חדשה לאיתי" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('itai','passItai')">שמור סיסמה</button></div>
-              <div class="summary-card" style="min-width:unset; max-width:none; flex:none;"><strong>נויה</strong><div style="margin-top:6px">${CHILD_PASSWORDS.noya}</div><input id="passNoya" placeholder="סיסמה חדשה לנויה" style="width:90%; margin-top:8px;"><button onclick="changeSpecificChildPassword('noya','passNoya')">שמור סיסמה</button></div>
-            </div>
-          </div>
-        `;
-        adminBlock = `
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7f7);">
-            <h3 style="margin-top:0">ניהול מתקדם</h3>
-            <button onclick="clearChildLogs()">נקה לוגים של הילד שנבחר</button>
-            <button class="danger" onclick="clearAllLogs()">נקה את כל הלוגים</button>
-            <button class="danger" onclick="resetAllTasksAndPending()">איפוס משימות לכולם</button>
-            <button class="danger" onclick="resetSharedShopAndPending()">איפוס מתנות לכולם</button>
-            <button class="danger" onclick="resetAll()">איפוס מלא ⚠️</button>
-          </div>
-        `;
-      } else if(role === "mother"){
-        childRadioOptions = `
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" ${SELECTED_PARENT_CHILD.mother === 'meir' ? 'checked' : ''} onchange="setSelectedChild('mother','meir')"> מאיר</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi" ${SELECTED_PARENT_CHILD.mother === 'lavi' ? 'checked' : ''} onchange="setSelectedChild('mother','lavi')"> לביא</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="itai" ${SELECTED_PARENT_CHILD.mother === 'itai' ? 'checked' : ''} onchange="setSelectedChild('mother','itai')"> איתי</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="noya" ${SELECTED_PARENT_CHILD.mother === 'noya' ? 'checked' : ''} onchange="setSelectedChild('mother','noya')"> נויה</label>
-        `;
-      } else {
-        childRadioOptions = `
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="meir" ${SELECTED_PARENT_CHILD.grandma === 'meir' ? 'checked' : ''} onchange="setSelectedChild('grandma','meir')"> מאיר</label>
-          <label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="lavi" ${SELECTED_PARENT_CHILD.grandma === 'lavi' ? 'checked' : ''} onchange="setSelectedChild('grandma','lavi')"> לביא</label>
-        `;
-      }
-
-      document.getElementById("app").innerHTML = `
-        <div class="card app-shimmer" style="max-width:980px;">
-          <h2>${parentLabel(role)}</h2>
-
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-              <h3 style="margin:0">כמה כוכבים יש לכל ילד</h3>
-              <button onclick="parent(user)">רענן 🔄</button>
-            </div>
-            <div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div>
-            <div class="summary-scroll-hint">אפשר לגלול ימינה ושמאלה כדי לראות את כל הילדים</div>
-          </div>
-
-          <div class="card" style="background:#fafafa; margin-top:0;">
-            <h3 style="margin-top:0">בחר ילד</h3>
-            <div>${childRadioOptions}</div>
-          </div>
-
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);">
-            <h3 style="margin-top:0">ניהול כוכבים</h3>
-            <input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;">
-            <input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;">
-            <br>
-            <button onclick="addStars()">הוסף</button>
-            <button onclick="removeStars()">הסר</button>
-          </div>
-
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);">
-            <h3 style="margin-top:0">הגדרת יעד ופרס</h3>
-            <input id="target" type="number" placeholder="יעד" style="width:90%;">
-            <input id="reward" placeholder="מתנה" style="width:90%;">
-            <br>
-            <button onclick="saveTarget()">שמור יעד</button>
-            <button onclick="redeem()">מימוש פרס</button>
-          </div>
-
-          ${renderPresetTasksEditor(role)}
-
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);">
-            <h3 style="margin-top:0">בקשות שמחכות לאישור</h3>
-            <div id="pendingApprovals"><div class="small">טוען בקשות...</div></div>
-          </div>
-
-          ${renderShopEditor()}
-
-          <div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);">
-            <h3 style="margin-top:0">שינוי סיסמת משתמש</h3>
-            <input id="newPass" type="password" placeholder="סיסמה חדשה">
-            <br>
-            <button onclick="changePassword()">שמור סיסמה חדשה</button>
-          </div>
-
-          ${passwordsBlock}
-          ${adminBlock}
-
-          <button class="secondary" onclick="home()">חזרה</button>
-        </div>
-      `;
-
-      loadParentSummary(role);
-      loadPendingApprovals(role);
-    }
-
-    function togglePasswordsPanel(){
-      var el = document.getElementById('passwordsPanel');
-      if(!el) return;
-      el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    }
-
-    async function changeSpecificPassword(roleKey, inputId){
-      var el = document.getElementById(inputId);
-      if(!el) return;
-      var newPass = el.value;
-      if(newPass === ""){
-        alert("הסיסמה לא יכולה להיות ריקה");
-        return;
-      }
-      PASSWORDS[roleKey] = newPass;
-      await saveAppSettings();
-      alert("הסיסמה נשמרה");
-      parent(user);
-    }
-
-    async function changeSpecificChildPassword(childKey, inputId){
-      var el = document.getElementById(inputId);
-      if(!el) return;
-      var newPass = el.value;
-      if(newPass === ""){
-        alert("הסיסמה לא יכולה להיות ריקה");
-        return;
-      }
-      CHILD_PASSWORDS[childKey] = newPass;
-      await saveAppSettings();
-      alert("הסיסמה נשמרה");
-      parent(user);
-    }
-
-    async function applyPresetTaskFromParent(role, taskIndex){
-      var childId = getSelectedChild();
-      var task = getPresetTasks(role, childId)[taskIndex];
-      if(!task) return;
-      var data = await getChildData(childId);
-      if(role === 'father') data.father = safeNumber(data.father) + safeNumber(task.stars);
-      if(role === 'mother') data.mother = safeNumber(data.mother) + safeNumber(task.stars);
-      if(role === 'grandma') data.grandma = safeNumber(data.grandma) + safeNumber(task.stars);
-      var logs = data.logs || [];
-      logs.unshift({ parent: role, action: 'task_approved', amount: safeNumber(task.stars), note: task.name + ' (אישור ישיר מהורה)', createdAtText: nowText(), createdAtMillis: Date.now() });
-      data.logs = logs.slice(0,100);
-      await saveChildData(childId, data);
-      alert('המשימה נוספה ישירות');
-      parent(user);
-    }
-
-    async function addPresetTask(role){
-      var name = document.getElementById('taskName').value.trim();
-      var stars = Number(document.getElementById('taskStars').value);
-      var childId = getSelectedChild();
-      if(!name || !stars || stars < 1){
-        alert('מלא שם משימה וכמות כוכבים תקינה');
-        return;
-      }
-      APP_SETTINGS.presetTasks = normalizePresetTasks(APP_SETTINGS.presetTasks);
-      APP_SETTINGS.presetTasks[childId][role] = APP_SETTINGS.presetTasks[childId][role] || [];
-      if(APP_SETTINGS.presetTasks[childId][role].length >= 3){
-        alert('אפשר לשמור עד 3 משימות מוכנות לילד הזה');
-        return;
-      }
-      APP_SETTINGS.presetTasks[childId][role].push({ name: name, stars: stars });
-      await saveAppSettings();
-      alert('המשימה נשמרה עבור ' + childLabel(childId));
-      parent(user);
-    }
-
-    async function removePresetTask(role, childId, index){
-      APP_SETTINGS.presetTasks = normalizePresetTasks(APP_SETTINGS.presetTasks);
-      APP_SETTINGS.presetTasks[childId][role].splice(index, 1);
-      await saveAppSettings();
-      parent(user);
-    }
-
-    async function addShopItem(){
-      var name = document.getElementById('shopName').value.trim();
-      var price = Number(document.getElementById('shopPrice').value);
-      if(!name || !price || price < 1){
-        alert('מלא שם פרס ומחיר תקין');
-        return;
-      }
-      APP_SETTINGS.sharedShop.push({ name: name, price: price });
-      await saveAppSettings();
-      alert('הפרס נוסף לחנות');
-      parent(user);
-    }
-
-    async function removeShopItem(index){
-      APP_SETTINGS.sharedShop.splice(index, 1);
-      await saveAppSettings();
-      parent(user);
-    }
-
-    function getSelectedChild(){
-      var selected = document.querySelector('input[name="childChoice"]:checked');
-      if(selected) return selected.value;
-      return SELECTED_PARENT_CHILD[user] || 'meir';
-    }
-
-    async function addStars(){ await change("add"); }
-    async function removeStars(){ await change("remove"); }
-
-    async function change(type){
-      var child = getSelectedChild();
-      var amount = Number(document.getElementById("amount").value);
-      var note = document.getElementById("note").value || "";
-      if(!amount || amount < 1){
-        alert("הכנס כמות תקינה");
-        return;
-      }
-
-      var data = await getChildData(child);
-      if(user === "father"){
-        if(child === "itai" || child === "noya"){
-          alert("לילדים האלה רק אמא נותנת כוכבים");
-          return;
-        }
-        data.father = type === "add" ? safeNumber(data.father) + amount : Math.max(0, safeNumber(data.father) - amount);
-      } else if(user === "mother"){
-        data.mother = type === "add" ? safeNumber(data.mother) + amount : Math.max(0, safeNumber(data.mother) - amount);
-      } else if(user === "grandma"){
-        if(child === "itai" || child === "noya"){
-          alert("סבתא שמחה יכולה לתת כוכבים רק למאיר וללביא");
-          return;
-        }
-        data.grandma = type === "add" ? safeNumber(data.grandma) + amount : Math.max(0, safeNumber(data.grandma) - amount);
-      }
-
-      var logs = data.logs || [];
-      logs.unshift({ parent: user, action: type, amount: amount, note: note, createdAtText: nowText(), createdAtMillis: Date.now() });
-      data.logs = logs.slice(0,100);
-      await saveChildData(child, data);
-      alert("עודכן");
-      parent(user);
-    }
-
-    async function saveTarget(){
-      var child = getSelectedChild();
-      var target = Number(document.getElementById("target").value);
-      var reward = document.getElementById("reward").value;
-      if(!target || target < 1){
-        alert("הכנס יעד תקין");
-        return;
-      }
-
-      var data = await getChildData(child);
-      if(user === "father"){
-        if(child === "itai" || child === "noya"){
-          alert("לילדים האלה רק אמא יש יעד ומתנה");
-          return;
-        }
-        data.targetFather = target;
-        data.rewardFather = reward;
-      } else if(user === "mother"){
-        data.targetMother = target;
-        data.rewardMother = reward;
-      } else if(user === "grandma"){
-        if(child === "itai" || child === "noya"){
-          alert("סבתא שמחה יכולה להגדיר יעד רק למאיר וללביא");
-          return;
-        }
-        data.targetGrandma = target;
-        data.rewardGrandma = reward;
-      }
-
-      var logs = data.logs || [];
-      logs.unshift({ parent: user, action: "target", note: "יעד: " + target + " | מתנה: " + reward, createdAtText: nowText(), createdAtMillis: Date.now() });
-      data.logs = logs.slice(0,100);
-      await saveChildData(child, data);
-      alert("נשמר");
-      parent(user);
-    }
-
-    async function redeem(){
-      var child = getSelectedChild();
-      var data = await getChildData(child);
-      if(user === "father"){
-        if(child === "itai" || child === "noya"){
-          alert("לילדים האלה רק אמא יכולה לממש פרס");
-          return;
-        }
-        data.father = 0;
-      } else if(user === "mother"){
-        data.mother = 0;
-      } else if(user === "grandma"){
-        if(child === "itai" || child === "noya"){
-          alert("סבתא שמחה יכולה לממש פרס רק למאיר וללביא");
-          return;
-        }
-        data.grandma = 0;
-      }
-
-      var logs = data.logs || [];
-      logs.unshift({ parent: user, action: "redeem", note: "בוצע מימוש פרס ואיפוס המסלול", createdAtText: nowText(), createdAtMillis: Date.now() });
-      data.logs = logs.slice(0,100);
-      await saveChildData(child, data);
-      alert("הפרס מומש והמסלול אופס");
-      parent(user);
-    }
-
-    async function changePassword(){
-      var newPass = document.getElementById("newPass").value;
-      if(newPass === ""){
-        alert("הסיסמה לא יכולה להיות ריקה");
-        return;
-      }
-      PASSWORDS[user] = newPass;
-      await saveAppSettings();
-      alert("הסיסמה נשמרה");
-      parent(user);
-    }
-
-    function togglePasswordVisibility(inputId, checkboxEl){
-      var input = document.getElementById(inputId);
-      if(!input) return;
-      input.type = checkboxEl && checkboxEl.checked ? "text" : "password";
-    }
-
-    async function changeOwnChildPassword(child){
-      var newPass = document.getElementById("kidNewPass").value;
-      if(newPass === ""){
-        alert("הסיסמה לא יכולה להיות ריקה");
-        return;
-      }
-      CHILD_PASSWORDS[child] = newPass;
-      await saveAppSettings();
-      alert("הסיסמה החדשה נשמרה");
-      childLogin(child);
-    }
-
-    async function clearChildLogs(){
-      var child = getSelectedChild();
-      var ok = await appConfirm("לנקות את כל הלוגים של " + childLabel(child) + "?", "ניקוי לוגים");
-      if(!ok) return;
-      var data = await getChildData(child);
-      data.logs = [];
-      await saveChildData(child, data);
-      alert("הלוגים של " + childLabel(child) + " נוקו");
-      parent(user);
-    }
-
-    async function clearAllLogs(){
-      var ok = await appConfirm("לנקות את כל הלוגים של כל הילדים?", "ניקוי כל הלוגים");
-      if(!ok) return;
-      var children = ["meir","lavi","itai","noya"];
-      for(var i = 0; i < children.length; i++){
-        var childId = children[i];
-        var data = await getChildData(childId);
-        data.logs = [];
-        await saveChildData(childId, data);
-      }
-      alert("כל הלוגים נוקו");
-      parent(user);
-    }
-
-
-    async function resetAllTasksAndPending(){
-      var ok = await appConfirm("לאפס את כל המשימות המוכנות והמשימות שממתינות לבדיקה לכל הילדים?", "איפוס משימות");
-      if(!ok) return;
-
-      APP_SETTINGS.presetTasks = createEmptyPresetTasks();
-      await replacePresetTasksInDb(APP_SETTINGS.presetTasks);
-
-      var children = ["meir","lavi","itai","noya"];
-      for(var i = 0; i < children.length; i++){
-        var childId = children[i];
-        var data = await getChildData(childId);
-        data.pendingTasks = [];
-        var logs = data.logs || [];
-        logs.unshift({
-          parent: "father",
-          action: "clearalllogs",
-          note: "בוצע איפוס משימות ממתינות ומשימות מוכנות לכולם",
-          createdAtText: nowText(),
-          createdAtMillis: Date.now()
-        });
-        data.logs = logs.slice(0,100);
-        await saveChildData(childId, data);
-      }
-
-      await saveAppSettings();
-
-      alert("כל המשימות אופסו מהמסד נתונים");
-      parent(user);
-    }
-
-    async function resetSharedShopAndPending(){
-      var ok = await appConfirm("לאפס את כל המתנות בחנות ואת כל בקשות המימוש שמחכות לאישור?", "איפוס חנות");
-      if(!ok) return;
-
-      APP_SETTINGS.sharedShop = [];
-      await saveAppSettings();
-
-      var children = ["meir","lavi","itai","noya"];
-      for(var i = 0; i < children.length; i++){
-        var childId = children[i];
-        var data = await getChildData(childId);
-        data.pendingShopRequests = [];
-        var logs = data.logs || [];
-        logs.unshift({
-          parent: "father",
-          action: "clearalllogs",
-          note: "בוצע איפוס חנות מתנות ובקשות מימוש לכולם",
-          createdAtText: nowText(),
-          createdAtMillis: Date.now()
-        });
-        data.logs = logs.slice(0,100);
-        await saveChildData(childId, data);
-      }
-
-      alert("כל המתנות אופסו מהמסד נתונים");
-      parent(user);
-    }
-
-    async function resetAll(){
-      var ok = await appConfirm("אתה בטוח שאתה רוצה לאפס את כל המערכת? זה יאפס כוכבים, יעדים, מתנות, לוגים וסיסמאות.", "איפוס מלא");
-      if(!ok) return;
-
-      var children = ["meir","lavi","itai","noya"];
-      for(var i = 0; i < children.length; i++){
-        await db.collection("children").doc(children[i]).set({
-          father: 0,
-          mother: 0,
-          grandma: 0,
-          targetFather: 100,
-          targetMother: 100,
-          targetGrandma: 100,
-          rewardFather: "",
-          rewardMother: "",
-          rewardGrandma: "",
-          logs: [{ parent: user, action: "reset", note: "בוצע איפוס מלא למערכת", createdAtText: nowText(), createdAtMillis: Date.now() }]
-        });
-      }
-
-      PASSWORDS = { father: DEFAULT_PASSWORDS.father, mother: DEFAULT_PASSWORDS.mother, grandma: DEFAULT_PASSWORDS.grandma };
-      CHILD_PASSWORDS = { meir: DEFAULT_CHILD_PASSWORDS.meir, lavi: DEFAULT_CHILD_PASSWORDS.lavi, itai: DEFAULT_CHILD_PASSWORDS.itai, noya: DEFAULT_CHILD_PASSWORDS.noya };
-      APP_SETTINGS = { presetTasks: createEmptyPresetTasks(), sharedShop: [] };
-      await replacePresetTasksInDb(APP_SETTINGS.presetTasks);
-      await saveAppSettings();
-      alert("המערכת אופסה בהצלחה");
-      home();
-    }
-
-    (async function start(){
-      try {
-        await ensureSettings();
-        showSplash();
-      } catch (e) {
-        document.getElementById("app").innerHTML = `<div class="card">שגיאה: ${(e && e.message) ? e.message : e}</div>`;
-      }
-    })();
-  </script></body>
+  });
+  return out;
+}
+function getAllowedParentsForChild(childId){
+  var perms = APP_SETTINGS.permissionsMatrix[childId] || {};
+  return Object.keys(APP_SETTINGS.parentsDirectory).filter(function(parentId){ return !!perms[parentId]; });
+}
+function userCanManageChild(parentId, childId){
+  return !!(APP_SETTINGS.permissionsMatrix[childId] && APP_SETTINGS.permissionsMatrix[childId][parentId]);
+}
+function defaultPermissions(parents, children){
+  var p={};
+  Object.keys(children).forEach(function(childId){
+    p[childId]={};
+    Object.keys(parents).forEach(function(parentId){
+      var allow = (childId==='itai'||childId==='noya') ? parentId==='mother' : true;
+      p[childId][parentId]=allow;
+    });
+  });
+  return p;
+}
+async function ensureSettings(){
+  var ref = db.collection("settings").doc("app");
+  var snap = await ref.get();
+  var data = snap.data() || {};
+  var fallbackParents = {
+    father: {name:"אבא", password:(data.passwords||{}).father || "1111"},
+    mother: {name:"אמא", password:(data.passwords||{}).mother || "2222"},
+    grandma: {name:"סבתא שמחה", password:(data.passwords||{}).grandma || "3333"}
+  };
+  var fallbackChildren = {
+    meir: {name:"מאיר", password:(data.childPasswords||{}).meir || "1234"},
+    lavi: {name:"לביא", password:(data.childPasswords||{}).lavi || "1234"},
+    itai: {name:"איתי", password:(data.childPasswords||{}).itai || "1234"},
+    noya: {name:"נויה", password:(data.childPasswords||{}).noya || "1234"}
+  };
+  APP_SETTINGS.parentsDirectory = data.parentsDirectory || fallbackParents;
+  APP_SETTINGS.childrenDirectory = data.childrenDirectory || fallbackChildren;
+  APP_SETTINGS.permissionsMatrix = data.permissionsMatrix || defaultPermissions(APP_SETTINGS.parentsDirectory, APP_SETTINGS.childrenDirectory);
+  PASSWORDS = {};
+  Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(k){ PASSWORDS[k] = APP_SETTINGS.parentsDirectory[k].password || ""; });
+  CHILD_PASSWORDS = {};
+  Object.keys(APP_SETTINGS.childrenDirectory).forEach(function(k){ CHILD_PASSWORDS[k] = APP_SETTINGS.childrenDirectory[k].password || ""; });
+  APP_SETTINGS.presetTasks = normalizePresetTasks(data.presetTasks);
+  APP_SETTINGS.sharedShop = Array.isArray(data.sharedShop) ? data.sharedShop : [];
+  Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(k){
+    if(!SELECTED_PARENT_CHILD[k]) {
+      var firstAllowed = Object.keys(APP_SETTINGS.childrenDirectory).find(function(childId){ return userCanManageChild(k, childId); });
+      if(firstAllowed) SELECTED_PARENT_CHILD[k] = firstAllowed;
+    }
+  });
+  await db.collection("settings").doc("app").set({
+    parentsDirectory: APP_SETTINGS.parentsDirectory,
+    childrenDirectory: APP_SETTINGS.childrenDirectory,
+    permissionsMatrix: APP_SETTINGS.permissionsMatrix,
+    presetTasks: APP_SETTINGS.presetTasks,
+    sharedShop: APP_SETTINGS.sharedShop
+  }, { merge:true });
+}
+async function saveAppSettings(){
+  await db.collection("settings").doc("app").set({
+    parentsDirectory: APP_SETTINGS.parentsDirectory,
+    childrenDirectory: APP_SETTINGS.childrenDirectory,
+    permissionsMatrix: APP_SETTINGS.permissionsMatrix,
+    presetTasks: APP_SETTINGS.presetTasks,
+    sharedShop: APP_SETTINGS.sharedShop
+  }, { merge:true });
+}
+function migrateChildData(data){
+  data = data || {};
+  if(!data.scores) {
+    data.scores = {};
+    if('father' in data) data.scores.father = safeNumber(data.father);
+    if('mother' in data) data.scores.mother = safeNumber(data.mother);
+    if('grandma' in data) data.scores.grandma = safeNumber(data.grandma);
+  }
+  if(!data.targets) {
+    data.targets = {};
+    if('targetFather' in data) data.targets.father = safeNumber(data.targetFather)||100;
+    if('targetMother' in data) data.targets.mother = safeNumber(data.targetMother)||100;
+    if('targetGrandma' in data) data.targets.grandma = safeNumber(data.targetGrandma)||100;
+  }
+  if(!data.rewards) {
+    data.rewards = {};
+    if('rewardFather' in data) data.rewards.father = data.rewardFather || "";
+    if('rewardMother' in data) data.rewards.mother = data.rewardMother || "";
+    if('rewardGrandma' in data) data.rewards.grandma = data.rewardGrandma || "";
+  }
+  data.logs = data.logs || [];
+  data.pendingTasks = data.pendingTasks || [];
+  data.pendingShopRequests = data.pendingShopRequests || [];
+  Object.keys(APP_SETTINGS.parentsDirectory).forEach(function(parentId){
+    if(typeof data.scores[parentId] !== 'number') data.scores[parentId] = safeNumber(data.scores[parentId]);
+    if(typeof data.targets[parentId] !== 'number' || !data.targets[parentId]) data.targets[parentId] = 100;
+    if(typeof data.rewards[parentId] !== 'string') data.rewards[parentId] = '';
+  });
+  return data;
+}
+async function getChildData(id){
+  var snap = await db.collection("children").doc(id).get();
+  return migrateChildData(snap.data() || {});
+}
+async function saveChildData(id, data){
+  data = migrateChildData(data);
+  await db.collection("children").doc(id).set(data, { merge:true });
+}
+function getCurrentTotal(data, id){
+  return getAllowedParentsForChild(id).reduce(function(sum,parentId){ return sum + safeNumber(data.scores[parentId]); }, 0);
+}
+function getCurrentTargetTotal(data, id){
+  return getAllowedParentsForChild(id).reduce(function(sum,parentId){ return sum + (safeNumber(data.targets[parentId]) || 100); }, 0);
+}
+function calcOverallPercent(data, id){
+  var total = getCurrentTotal(data, id);
+  var target = getCurrentTargetTotal(data, id);
+  return Math.min(100, Math.round((total / Math.max(1, target)) * 100));
+}
+function calcLevel(data, id){
+  var percent = calcOverallPercent(data, id);
+  if(percent < 25) return "מתחיל 🟢";
+  if(percent < 50) return "מתקדם 🔵";
+  if(percent < 75) return "אלוף 🟣";
+  return "כוכב על 👑";
+}
+function buildLevelMessage(data, id){
+  var percent = calcOverallPercent(data, id);
+  var target = getCurrentTargetTotal(data, id);
+  var total = getCurrentTotal(data, id);
+  var left = Math.max(0, target - total);
+  if(percent >= 90) return "וואו! אתה ממש רגע מדרגה הבאה 🚀";
+  if(percent >= 75) return "עוד קצת ואתה כוכב על 👑";
+  if(percent >= 50) return "אתה מתקדם מעולה 💪";
+  if(percent >= 25) return "כל הכבוד, כבר התחלת לטפס 🌟";
+  return left > 0 ? "יאללה, חסרים עוד " + left + " כוכבים ליעד הגדול ✨" : "בוא נתחיל לצבור כוכבים ✨";
+}
+function getParentColorClass(role){
+  var idx = Object.keys(APP_SETTINGS.parentsDirectory).indexOf(role) % 3;
+  return ['f','m','g'][idx < 0 ? 0 : idx];
+}
+function getParentBarClass(role){
+  var idx = Object.keys(APP_SETTINGS.parentsDirectory).indexOf(role) % 3;
+  return ['bar-f','bar-m','bar-g'][idx < 0 ? 0 : idx];
+}
+function getParentTipClass(role){
+  var idx = Object.keys(APP_SETTINGS.parentsDirectory).indexOf(role) % 3;
+  return ['tip','tip mother','tip grandma'][idx < 0 ? 0 : idx];
+}
+function home(){
+  var childButtons = Object.keys(APP_SETTINGS.childrenDirectory).map(function(childId){
+    return `<button onclick="childLogin('${childId}')">${childEmoji(childId)} ${childLabel(childId)}</button>`;
+  }).join('');
+  var parentButtons = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
+    return `<button class="${parentId}" onclick="login('${parentId}')">כניסת ${parentLabel(parentId)}</button>`;
+  }).join('');
+  document.getElementById("app").innerHTML = `
+    <div class="hero">
+      <div class="badge">⭐</div>
+      <div class="card app-shimmer">
+        <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
+        <div class="small">האפליקציה מחוברת למערכת הניהול החדשה</div>
+        <div class="grid-buttons">${childButtons}</div>
+        <br>
+        <div class="grid-buttons">${parentButtons}</div>
+        <div style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95;">גרסה ${APP_VERSION}</div>
+      </div>
+    </div>`;
+}
+function showSplash(){
+  document.getElementById("app").innerHTML = `<div class="hero"><div class="card app-shimmer" style="min-height:320px; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(180deg,#fffdf5,#ffe4e6);"><div style="font-size:88px; animation:spinStar 2.8s linear infinite;">⭐</div><div style="font-size:34px; font-weight:900; color:#be185d; margin-top:12px;">אפליקציית הכוכבים</div><div style="font-size:22px; font-weight:700; color:#7c2d12; margin-top:8px;">גרסה ${APP_VERSION}</div></div></div>`;
+  setTimeout(home, 2200);
+}
+function login(role){
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer"><h2>${parentLabel(role)}</h2><input id="pass" type="password" placeholder="הכנס סיסמה"><br><button onclick="checkLogin('${role}')">כניסה</button><br><br><button class="secondary" onclick="home()">חזרה</button></div>`;
+}
+function checkLogin(role){
+  var pass = document.getElementById("pass").value;
+  if(role === "father" && pass === MASTER_PASSWORD){ masterView(); return; }
+  if(pass !== PASSWORDS[role]){ alert(funnyWrongPassword()); return; }
+  parent(role);
+}
+function childLogin(id){
+  document.getElementById("app").innerHTML = `<div class="card welcome-stage app-shimmer"><div class="badge floaty">${childEmoji(id)}</div><div class="welcome-title">שלום ${childLabel(id)} 🌟</div><div class="welcome-sub">הכנס את הסיסמה שלך</div><div style="margin-top:18px;"><input id="childPass" type="password" placeholder="הסיסמה שלך"><div style="margin-top:6px; font-size:14px; color:#6b7280;"><label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" onchange="togglePasswordVisibility('childPass', this)">הצג סיסמה</label></div><button onclick="checkChildLogin('${id}')">כניסה</button><br><br><button class="secondary" onclick="home()">חזרה</button></div></div>`;
+}
+function checkChildLogin(id){
+  var pass = document.getElementById("childPass").value;
+  if(pass !== CHILD_PASSWORDS[id]){ alert(funnyWrongPassword()); return; }
+  child(id);
+}
+function masterView(){
+  document.getElementById("app").innerHTML = `<div class="card"><h2>🔐 גישת מאסטר</h2>${Object.keys(APP_SETTINGS.parentsDirectory).map(k=>`<p><strong>${parentLabel(k)}:</strong> ${PASSWORDS[k]||''}</p>`).join('')}${Object.keys(APP_SETTINGS.childrenDirectory).map(k=>`<p><strong>${childLabel(k)}:</strong> ${CHILD_PASSWORDS[k]||''}</p>`).join('')}<button class="secondary" onclick="home()">חזרה</button></div>`;
+}
+function buildGoalCard(title, current, target, reward, roleKey){
+  var percent = Math.min(100, (current / Math.max(1, target)) * 100);
+  var colorClass = roleKey === "total" ? "total" : getParentColorClass(roleKey);
+  var barClass = roleKey === "total" ? "bar-total" : getParentBarClass(roleKey);
+  var tipClass = roleKey === "total" ? "tip total" : getParentTipClass(roleKey);
+  return `<div class="goal ${colorClass}"><div class="big" style="font-size:22px">🎯 ${title}</div><div><strong>${current}</strong> מתוך <strong>${target}</strong></div><div class="progress"><div class="${barClass}" style="width:${percent}%"></div></div><div class="small">נשארו עוד ${Math.max(0, target-current)} כוכבים</div><div class="reward">🎁 ${reward || 'עדיין לא הוגדרה מתנה'}</div>${current >= target ? `<div class="win">כל הכבוד! הגעת ליעד 🎉</div>` : `<div class="${tipClass}">המשך כך 🌟</div>`}</div>`;
+}
+function renderQuickTaskButtons(id, data){
+  var html = [];
+  getAllowedParentsForChild(id).forEach(function(role){
+    (APP_SETTINGS.presetTasks[id]?.[role] || []).forEach(function(task, index){
+      var isPending = (data.pendingTasks||[]).some(function(pt){ return pt.role===role && pt.taskIndex===index && pt.status==='pending'; });
+      html.push(isPending ? `<button class="mini secondary" disabled>${task.name} • ממתין לבדיקה ⏳</button>` : `<button class="mini ${role}" onclick="requestQuickTask('${id}','${role}',${index})">${task.name} +${task.stars}</button>`);
+    });
+  });
+  return html.length ? html.join('') : '<div class="small">אין משימות מוכנות עדיין לילד הזה</div>';
+}
+function renderShopForChild(id, data){
+  if(!APP_SETTINGS.sharedShop.length) return '<div class="small">החנות עדיין ריקה</div>';
+  return APP_SETTINGS.sharedShop.map(function(item,index){
+    var isPending = (data.pendingShopRequests||[]).some(function(req){ return req.itemIndex===index && req.status==='pending'; });
+    return `<div class="shop-line"><div><strong>${item.name}</strong> • ${item.price} כוכבים</div>${isPending ? `<button class="shop mini secondary" disabled>ממתין לאישור ⏳</button>` : `<button class="shop mini" onclick="requestShopPurchase('${id}',${index})">ממש</button>`}</div>`;
+  }).join('');
+}
+function renderPendingStatusForChild(id, data){
+  var parts = [];
+  (data.pendingTasks||[]).filter(pt=>pt.status==='pending').forEach(function(pt){ parts.push(`<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`); });
+  (data.pendingShopRequests||[]).filter(req=>req.status==='pending').forEach(function(req){ parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מימוש פרס</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}</div></div>`); });
+  return parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לבדיקה כרגע</div>';
+}
+async function child(id){
+  var data = await getChildData(id);
+  var totalCurrent = getCurrentTotal(data, id);
+  var totalTarget = getCurrentTargetTotal(data, id);
+  var totalLevel = calcLevel(data, id);
+  var totalPercent = calcOverallPercent(data, id);
+  var logsHtml = (data.logs||[]).slice(0,30).map(function(item){
+    return `<div class="log-item"><div><strong>${parentLabel(item.parent)||item.parent}</strong> • ${actionLabel(item.action)}${item.amount ? ' • כוכבים: '+item.amount : ''}</div><div>${item.note || ''}</div><div class="small">${item.createdAtText || ''}</div></div>`;
+  }).join('');
+  var totalCardHtml = `<div class="stat total stats-total-top shine-card"><div class="stat-label">כל הכוכבים שלך ⭐</div><div class="big pop-number">${totalCurrent}</div><div class="stat-sub">${totalPercent}% מהיעד הכולל</div><div class="level-chip">${totalLevel}</div></div>`;
+  var statsHtml = getAllowedParentsForChild(id).map(function(parentId){
+    return `<div class="stat ${getParentColorClass(parentId)}"><div class="stat-label">כוכבים מ${parentLabel(parentId)}</div><div class="big">${safeNumber(data.scores[parentId])}</div></div>`;
+  }).join('');
+  var goalsHtml = buildGoalCard("היעד הכולל שלך", totalCurrent, totalTarget, "כל הפרסים בדרך", "total") + getAllowedParentsForChild(id).map(function(parentId){
+    return buildGoalCard("היעד של " + parentLabel(parentId), safeNumber(data.scores[parentId]), safeNumber(data.targets[parentId])||100, data.rewards[parentId], parentId);
+  }).join('');
+  document.getElementById("app").innerHTML = `<div class="kid-card card" style="background:linear-gradient(180deg,#fffdf5,#fff1f2); border:3px solid #fde68a;"><div class="badge floaty">${childEmoji(id)}</div><h2 class="kid-title" style="color:#be185d;">${childLabel(id)}</h2><div class="kid-sub" style="font-size:15px;">${buildLevelMessage(data,id)}</div>${totalCardHtml}<div class="stats-grid-parents">${statsHtml}</div>${goalsHtml}<div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f0fdf4); border:2px dashed #86efac;"><h3 style="margin-top:0">⚡ משימות מוכנות</h3><div class="task-btn-wrap">${renderQuickTaskButtons(id,data)}</div></div><div class="pending-box"><h3 style="margin-top:0">⏳ ממתין לבדיקה</h3>${renderPendingStatusForChild(id,data)}</div><div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#ecfdf5); border:2px dashed #6ee7b7; text-align:right;"><h3 style="margin-top:0">🛒 חנות הפרסים</h3>${renderShopForChild(id,data)}</div><div class="card" style="text-align:right;margin-top:12px; background:linear-gradient(180deg,#ffffff,#fff7ed); border:2px dashed #fcd34d;"><h3 style="margin-top:0">📝 על מה קיבלת כוכבים</h3>${logsHtml || '<div class="small">עדיין אין פעולות על הכוכבים שלך</div>'}</div><div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#eef2ff); border:2px dashed #c4b5fd;"><h3 style="margin-top:0">🔐 שינוי הסיסמה שלך</h3><input id="kidNewPass" type="password" placeholder="סיסמה חדשה"><div style="margin-top:6px; font-size:14px; color:#6b7280;"><label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" onchange="togglePasswordVisibility('kidNewPass', this)">הצג סיסמה</label></div><br><button onclick="changeOwnChildPassword('${id}')">שמור סיסמה חדשה</button></div><div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
+}
+async function requestQuickTask(childId, role, taskIndex){
+  var task = APP_SETTINGS.presetTasks[childId]?.[role]?.[taskIndex];
+  if(!task) return;
+  var data = await getChildData(childId);
+  if((data.pendingTasks||[]).some(pt=>pt.role===role && pt.taskIndex===taskIndex && pt.status==='pending')){ alert('המשימה הזאת כבר ממתינה לבדיקה ⏳'); return; }
+  data.pendingTasks.unshift({ id:'pt_'+Date.now(), role:role, taskIndex:taskIndex, taskName:task.name, stars:safeNumber(task.stars), status:'pending', requestedAtText:nowText(), requestedAtMillis:Date.now() });
+  data.logs.unshift({ parent:role, action:'task_pending', amount:safeNumber(task.stars), note:task.name, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(childId, data);
+  alert('המשימה נשלחה לבדיקה ✅');
+  child(childId);
+}
+async function requestShopPurchase(childId, itemIndex){
+  var item = APP_SETTINGS.sharedShop[itemIndex];
+  if(!item) return;
+  var data = await getChildData(childId);
+  var total = getCurrentTotal(data, childId);
+  if(total < safeNumber(item.price)){ alert('אין מספיק כוכבים בשביל הפרס הזה 😅'); return; }
+  if((data.pendingShopRequests||[]).some(req=>req.itemIndex===itemIndex && req.status==='pending')){ alert('הפרס הזה כבר ממתין לאישור ⏳'); return; }
+  data.pendingShopRequests.unshift({ id:'shop_'+Date.now(), itemIndex:itemIndex, itemName:item.name, price:safeNumber(item.price), status:'pending', requestedAtText:nowText(), requestedAtMillis:Date.now() });
+  data.logs.unshift({ parent:user||'mother', action:'shop_pending', amount:safeNumber(item.price), note:'בקשה למימוש פרס: '+item.name, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(childId, data);
+  alert('הבקשה נשלחה לאישור 🎁');
+  child(childId);
+}
+async function approvePendingTask(childId, taskId){
+  var data = await getChildData(childId);
+  var idx = (data.pendingTasks||[]).findIndex(pt=>pt.id===taskId);
+  if(idx===-1) return;
+  var pt = data.pendingTasks[idx];
+  if(pt.role !== user){ alert('אפשר לאשר רק משימות שלך'); return; }
+  data.scores[pt.role] = safeNumber(data.scores[pt.role]) + safeNumber(pt.stars);
+  data.pendingTasks.splice(idx,1);
+  data.logs.unshift({ parent:pt.role, action:'task_approved', amount:safeNumber(pt.stars), note:pt.taskName, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(childId,data);
+  alert('המשימה אושרה 🌟');
+  parent(user);
+}
+async function rejectPendingTask(childId, taskId){
+  var data = await getChildData(childId);
+  var idx = (data.pendingTasks||[]).findIndex(pt=>pt.id===taskId);
+  if(idx===-1) return;
+  var pt = data.pendingTasks[idx];
+  if(pt.role !== user){ alert('אפשר לדחות רק משימות שלך'); return; }
+  data.pendingTasks.splice(idx,1);
+  data.logs.unshift({ parent:pt.role, action:'task_rejected', amount:safeNumber(pt.stars), note:pt.taskName, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(childId,data);
+  alert('המשימה נדחתה');
+  parent(user);
+}
+async function approvePendingShop(childId, requestId){
+  var data = await getChildData(childId);
+  var idx = (data.pendingShopRequests||[]).findIndex(req=>req.id===requestId);
+  if(idx===-1) return;
+  var req = data.pendingShopRequests[idx];
+  if(!userCanManageChild(user, childId)){ alert('אין לך הרשאה לילד הזה'); return; }
+  var price = safeNumber(req.price);
+  var allowed = getAllowedParentsForChild(childId);
+  var left = price;
+  var pools = allowed.map(function(parentId){ return {key:parentId, value:safeNumber(data.scores[parentId])}; }).sort((a,b)=>b.value-a.value);
+  pools.forEach(function(pool){ if(left<=0) return; var take = Math.min(pool.value,left); data.scores[pool.key] = Math.max(0,safeNumber(data.scores[pool.key])-take); left -= take; });
+  data.pendingShopRequests.splice(idx,1);
+  data.logs.unshift({ parent:user, action:'shop_approved', amount:price, note:'אושר מימוש פרס: '+req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(childId,data);
+  alert('הפרס אושר 🎉');
+  parent(user);
+}
+async function rejectPendingShop(childId, requestId){
+  var data = await getChildData(childId);
+  var idx = (data.pendingShopRequests||[]).findIndex(req=>req.id===requestId);
+  if(idx===-1) return;
+  var req = data.pendingShopRequests[idx];
+  if(!userCanManageChild(user, childId)){ alert('אין לך הרשאה לילד הזה'); return; }
+  data.pendingShopRequests.splice(idx,1);
+  data.logs.unshift({ parent:user, action:'shop_rejected', amount:safeNumber(req.price), note:'נדחתה בקשת פרס: '+req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(childId,data);
+  alert('הבקשה נדחתה');
+  parent(user);
+}
+async function loadPendingApprovals(role){
+  var ids = Object.keys(APP_SETTINGS.childrenDirectory).filter(childId=>userCanManageChild(role, childId));
+  var parts = [];
+  for(var i=0;i<ids.length;i++){ var id=ids[i]; var data=await getChildData(id);
+    (data.pendingTasks||[]).filter(pt=>pt.status==='pending' && pt.role===role).forEach(function(pt){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • ${pt.taskName} • ${pt.stars} כוכבים<div class="small">${pt.requestedAtText||''}</div></div><div><button class="mini" onclick="approvePendingTask('${id}','${pt.id}')">אשר</button><button class="danger mini" onclick="rejectPendingTask('${id}','${pt.id}')">דחה</button></div></div>`); });
+    (data.pendingShopRequests||[]).filter(req=>req.status==='pending').forEach(function(req){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • בקשת פרס: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText||''}</div></div><div><button class="mini shop" onclick="approvePendingShop('${id}','${req.id}')">אשר פרס</button><button class="danger mini" onclick="rejectPendingShop('${id}','${req.id}')">דחה</button></div></div>`); });
+  }
+  var el=document.getElementById('pendingApprovals'); if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לאישור כרגע</div>';
+}
+async function loadParentSummary(role){
+  var ids = Object.keys(APP_SETTINGS.childrenDirectory).filter(childId=>userCanManageChild(role, childId));
+  var html = "";
+  for(var i=0;i<ids.length;i++){ var id=ids[i]; var data=await getChildData(id); var total=getCurrentTotal(data,id); var target=getCurrentTargetTotal(data,id); var level=calcLevel(data,id);
+    var logsHtml=(data.logs||[]).slice(0,20).map(function(item){ return `<div class="log-item" style="margin:6px 0; padding:8px; font-size:13px;"><div><strong>${parentLabel(item.parent)||item.parent}</strong> • ${actionLabel(item.action)}${item.amount ? ' • '+item.amount+' כוכבים' : ''}</div><div>${item.note||''}</div><div class="small">${item.createdAtText||''}</div></div>`; }).join('');
+    html += `<div class="summary-card"><div style="font-size:22px;margin-bottom:8px">${childEmoji(id)} <strong>${childLabel(id)}</strong></div><div><strong>סה״כ:</strong> ${total} / יעד ${target}</div><div class="level-chip">${level}</div>${getAllowedParentsForChild(id).map(parentId=>`<div><strong>מ${parentLabel(parentId)}:</strong> ${safeNumber(data.scores[parentId])} / יעד ${safeNumber(data.targets[parentId])||100}</div>`).join('')}<div class="logs-title">לוגים</div><div class="logs-box">${logsHtml || '<div class="small" style="text-align:center; padding:8px 0;">אין לוגים עדיין</div>'}</div></div>`;
+  }
+  var el=document.getElementById('parentSummary'); if(el) el.innerHTML=html;
+}
+function renderPresetTasksEditor(role){
+  var childId = getSelectedChild();
+  var tasks = APP_SETTINGS.presetTasks[childId]?.[role] || [];
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f0fdf4);"><h3 style="margin-top:0">משימות מוכנות של ${parentLabel(role)} עבור ${childLabel(childId)}</h3><div class="small">אפשר לשמור עד 3 משימות לילד הזה</div><input id="taskName" placeholder="שם המשימה" style="width:90%;"><input id="taskStars" type="number" placeholder="כמה כוכבים" style="width:90%;"><br><button onclick="addPresetTask('${role}')">שמור משימה</button><div style="margin-top:10px; text-align:right;">${tasks.length ? tasks.map((task,index)=>`<div class="task-line"><div><strong>${task.name}</strong> • ${task.stars} כוכבים</div><button class="danger mini" onclick="removePresetTask('${role}','${childId}',${index})">מחק</button></div>`).join('') : '<div class="small">אין משימות מוכנות עדיין לילד הזה</div>'}</div></div>`;
+}
+function renderShopEditor(){
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#ecfdf5);"><h3 style="margin-top:0">ניהול חנות פרסים משותפת</h3><input id="shopName" placeholder="שם הפרס" style="width:90%;"><input id="shopPrice" type="number" placeholder="מחיר בכוכבים" style="width:90%;"><br><button class="shop" onclick="addShopItem()">הוסף פרס</button><div style="margin-top:10px; text-align:right;">${APP_SETTINGS.sharedShop.length ? APP_SETTINGS.sharedShop.map((item,index)=>`<div class="shop-line"><div><strong>${item.name}</strong> • ${item.price} כוכבים</div><button class="danger mini" onclick="removeShopItem(${index})">מחק</button></div>`).join('') : '<div class="small">אין פרסים בחנות עדיין</div>'}</div></div>`;
+}
+function parent(role){
+  user = role;
+  var ids = Object.keys(APP_SETTINGS.childrenDirectory).filter(childId=>userCanManageChild(role, childId));
+  if(!ids.length){ alert('אין לך כרגע ילדים מורשים'); home(); return; }
+  if(!SELECTED_PARENT_CHILD[role] || !ids.includes(SELECTED_PARENT_CHILD[role])) SELECTED_PARENT_CHILD[role] = ids[0];
+  var childRadioOptions = ids.map(function(childId){ return `<label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="${childId}" ${SELECTED_PARENT_CHILD[role]===childId?'checked':''} onchange="setSelectedChild('${role}','${childId}')"> ${childLabel(childId)}</label>`; }).join('');
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div><button class="secondary" onclick="home()">חזרה</button></div>`;
+  loadParentSummary(role); loadPendingApprovals(role);
+}
+async function addPresetTask(role){
+  var name=document.getElementById('taskName').value.trim();
+  var stars=Number(document.getElementById('taskStars').value);
+  var childId=getSelectedChild();
+  if(!name || !stars || stars<1){ alert('מלא שם משימה וכמות כוכבים תקינה'); return; }
+  APP_SETTINGS.presetTasks[childId][role]=APP_SETTINGS.presetTasks[childId][role]||[];
+  if(APP_SETTINGS.presetTasks[childId][role].length>=3){ alert('אפשר לשמור עד 3 משימות מוכנות לילד הזה'); return; }
+  APP_SETTINGS.presetTasks[childId][role].push({name:name, stars:stars});
+  await saveAppSettings(); alert('המשימה נשמרה עבור ' + childLabel(childId)); parent(user);
+}
+async function removePresetTask(role, childId, index){ APP_SETTINGS.presetTasks[childId][role].splice(index,1); await saveAppSettings(); parent(user); }
+async function addShopItem(){ var name=document.getElementById('shopName').value.trim(); var price=Number(document.getElementById('shopPrice').value); if(!name||!price||price<1){alert('מלא שם פרס ומחיר תקין');return;} APP_SETTINGS.sharedShop.push({name:name, price:price}); await saveAppSettings(); alert('הפרס נוסף לחנות'); parent(user); }
+async function removeShopItem(index){ APP_SETTINGS.sharedShop.splice(index,1); await saveAppSettings(); parent(user); }
+function getSelectedChild(){ return SELECTED_PARENT_CHILD[user] || Object.keys(APP_SETTINGS.childrenDirectory)[0]; }
+async function addStars(){ await change('add'); }
+async function removeStars(){ await change('remove'); }
+async function change(type){
+  var child=getSelectedChild(); var amount=Number(document.getElementById('amount').value); var note=document.getElementById('note').value || '';
+  if(!amount || amount<1){ alert('הכנס כמות תקינה'); return; }
+  var data=await getChildData(child);
+  data.scores[user] = type==='add' ? safeNumber(data.scores[user])+amount : Math.max(0, safeNumber(data.scores[user])-amount);
+  data.logs.unshift({parent:user, action:type, amount:amount, note:note, createdAtText:nowText(), createdAtMillis:Date.now()});
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(child,data); alert('עודכן'); parent(user);
+}
+async function saveTarget(){
+  var child=getSelectedChild(); var target=Number(document.getElementById('target').value); var reward=document.getElementById('reward').value;
+  if(!target || target<1){ alert('הכנס יעד תקין'); return; }
+  var data=await getChildData(child); data.targets[user]=target; data.rewards[user]=reward;
+  data.logs.unshift({parent:user, action:'target', note:'יעד: '+target+' | מתנה: '+reward, createdAtText:nowText(), createdAtMillis:Date.now() });
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(child,data); alert('נשמר'); parent(user);
+}
+async function redeem(){
+  var child=getSelectedChild(); var data=await getChildData(child); data.scores[user]=0;
+  data.logs.unshift({parent:user, action:'redeem', note:'בוצע מימוש פרס ואיפוס המסלול', createdAtText:nowText(), createdAtMillis:Date.now()});
+  data.logs = data.logs.slice(0,100);
+  await saveChildData(child,data); alert('הפרס מומש והמסלול אופס'); parent(user);
+}
+async function changePassword(){ var newPass=document.getElementById('newPass').value; if(newPass===''){alert('הסיסמה לא יכולה להיות ריקה'); return;} PASSWORDS[user]=newPass; APP_SETTINGS.parentsDirectory[user].password=newPass; await saveAppSettings(); alert('הסיסמה נשמרה'); parent(user); }
+async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){alert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); alert('הסיסמה החדשה נשמרה'); childLogin(child); }
+function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
+(async function start(){ try { await ensureSettings(); showSplash(); } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${(e && e.message) ? e.message : e}</div>`; } })();
+</script>
+</body>
 </html>
