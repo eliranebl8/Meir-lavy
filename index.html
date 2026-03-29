@@ -522,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.7.1";
+var APP_VERSION = "2.8";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -555,6 +555,88 @@ var FCM_TOKEN = localStorage.getItem('starsFcmToken') || '';
 var FCM_LAST_SAVED_TOKEN = localStorage.getItem('starsFcmSavedToken') || '';
 
 var LAST_PUSH_DEBUG = '';
+var DEVICE_LINKED_OWNER_TYPE = localStorage.getItem('starsLinkedOwnerType') || '';
+var DEVICE_LINKED_OWNER_ID = localStorage.getItem('starsLinkedOwnerId') || '';
+var DEVICE_LINKED_OWNER_LABEL = localStorage.getItem('starsLinkedOwnerLabel') || '';
+
+function resolveOwnerLabel(ownerType, ownerId){
+  if(!ownerType || !ownerId) return 'לא משויך';
+  if(ownerType === 'parent') return 'הורה: ' + parentLabel(ownerId);
+  if(ownerType === 'child') return 'ילד: ' + childLabel(ownerId);
+  return ownerId;
+}
+function setLinkedDeviceState(ownerType, ownerId){
+  DEVICE_LINKED_OWNER_TYPE = ownerType || '';
+  DEVICE_LINKED_OWNER_ID = ownerId || '';
+  DEVICE_LINKED_OWNER_LABEL = DEVICE_LINKED_OWNER_ID ? resolveOwnerLabel(DEVICE_LINKED_OWNER_TYPE, DEVICE_LINKED_OWNER_ID) : 'לא משויך';
+  localStorage.setItem('starsLinkedOwnerType', DEVICE_LINKED_OWNER_TYPE);
+  localStorage.setItem('starsLinkedOwnerId', DEVICE_LINKED_OWNER_ID);
+  localStorage.setItem('starsLinkedOwnerLabel', DEVICE_LINKED_OWNER_LABEL);
+}
+function clearLinkedDeviceState(){
+  setLinkedDeviceState('', '');
+}
+function renderLinkedDeviceLine(){
+  return DEVICE_LINKED_OWNER_ID ? ('המכשיר משויך ל: ' + DEVICE_LINKED_OWNER_LABEL) : 'המכשיר עדיין לא שויך למשתמש';
+}
+function isDeviceLinkedTo(ownerType, ownerId){
+  return DEVICE_LINKED_OWNER_TYPE === ownerType && DEVICE_LINKED_OWNER_ID === ownerId;
+}
+async function refreshLinkedDeviceState(){
+  try{
+    var token = FCM_TOKEN || localStorage.getItem('starsFcmToken') || '';
+    if(!token){
+      clearLinkedDeviceState();
+      return;
+    }
+    var doc = await db.collection('fcm_tokens').doc(token).get();
+    if(doc.exists){
+      var data = doc.data() || {};
+      setLinkedDeviceState(data.ownerType || '', data.ownerId || '');
+    }
+  }catch(e){
+    console.log('refreshLinkedDeviceState error', e);
+  }
+}
+async function approveDeviceForCurrentUser(ownerType, ownerId){
+  try{
+    if(!canUseFcmPush()){
+      appAlert('המכשיר הזה לא תומך בהתראות פוש מלאות');
+      return;
+    }
+    if(Notification.permission !== 'granted' || !FCM_TOKEN){
+      var permission = notificationsSupported() ? await Notification.requestPermission() : 'denied';
+      if(permission !== 'granted'){
+        appAlert('כדי לקשר את המכשיר צריך קודם לאשר התראות');
+        return;
+      }
+      var registration = await registerMessagingServiceWorker();
+      await registerFcmToken(registration);
+    }
+    var token = FCM_TOKEN || localStorage.getItem('starsFcmToken') || '';
+    if(!token){
+      appAlert('לא הצלחתי לייצר מזהה התראות למכשיר הזה');
+      return;
+    }
+    await db.collection('fcm_tokens').doc(token).set({
+      token: token,
+      clientInstanceId: CLIENT_INSTANCE_ID,
+      ownerType: ownerType,
+      ownerId: ownerId,
+      linkedAtMillis: Date.now(),
+      linkedAtText: nowText(),
+      active: true
+    }, { merge:true });
+    setLinkedDeviceState(ownerType, ownerId);
+    showToast('המכשיר קושר בהצלחה אל ' + resolveOwnerLabel(ownerType, ownerId) + ' ✅');
+    if(user && user === ownerId && ownerType === 'parent') parent(user);
+    else if(ownerType === 'child') child(ownerId);
+    else home();
+  }catch(e){
+    console.log('approveDeviceForCurrentUser error', e);
+    appAlert('לא הצלחתי לקשר את המכשיר הזה');
+  }
+}
 
 async function registerMessagingServiceWorker(){
   if(!('serviceWorker' in navigator)) throw new Error('serviceWorker_not_supported');
@@ -790,12 +872,12 @@ async function requestTruePushNotifications(){
     if(permission === 'granted'){
       var registration = await registerMessagingServiceWorker();
       await registerFcmToken(registration);
-      if(user){ await syncCurrentTokenProfile('parent', user); }
+      await refreshLinkedDeviceState();
       showToast('התראות פוש הופעלו בהצלחה 🔔');
     } else {
       appAlert('לא אושרו התראות כרגע');
     }
-    home();
+    if(user && APP_SETTINGS.parentsDirectory[user]) parent(user); else home();
   } catch(e){
     appAlert('לא הצלחתי לבקש הרשאת התראות במכשיר הזה');
   }
@@ -822,6 +904,7 @@ async function disableTruePushNotifications(){
     FCM_LAST_SAVED_TOKEN = '';
     localStorage.removeItem('starsFcmToken');
     localStorage.removeItem('starsFcmSavedToken');
+    clearLinkedDeviceState();
     try {
       var regs = await navigator.serviceWorker.getRegistrations();
       for(var i=0;i<regs.length;i++){
@@ -1549,6 +1632,7 @@ function home(){
       <div class="card app-shimmer">
         <h2 style="margin:0 0 8px">אפליקציית הכוכבים</h2>
         <div class="small">האפליקציה מחוברת למערכת הניהול החדשה</div>
+        <div class="small" style="margin-top:6px; color:#475569;">${renderLinkedDeviceLine()}</div>
         <div class="grid-buttons">${childButtons}</div>
         ${moreSection}
         ${customSections}
@@ -1672,6 +1756,11 @@ async function child(id){
             <div style="margin-top:8px">
               <button onclick="saveChildAppearance('${id}')">שמור עיצוב אישי</button>
             </div>
+            <hr>
+            <div class="small" style="color:#475569;">${isDeviceLinkedTo('child', id) ? ('המכשיר הזה כבר מאושר ל' + childLabel(id)) : renderLinkedDeviceLine()}</div>
+            <div style="margin-top:8px">
+              <button onclick="approveDeviceForCurrentUser('child','${id}')">אשר את המכשיר הזה ל${childLabel(id)}</button>
+            </div>
           </div><div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
   var emojiInput = document.getElementById('kidNewEmoji');
   var colorInput = document.getElementById('kidNewColor');
@@ -1684,7 +1773,6 @@ async function child(id){
   if(emojiInput) emojiInput.addEventListener('input', refreshKidPreview);
   if(colorInput) colorInput.addEventListener('input', refreshKidPreview);
   refreshKidPreview();
-  syncCurrentTokenProfile('child', id);
 }
 async function requestQuickTask(childId, role, taskIndex){
   var task = APP_SETTINGS.presetTasks[childId]?.[role]?.[taskIndex];
@@ -1912,7 +2000,8 @@ function renderPushManager(role){
     var checked = parentWantsPushForChild(role, childId);
     return `<div class="task-line"><div><strong>${childEmoji(childId)} ${childLabel(childId)}</strong><div class="small">כשאתה פועל על הילד הזה, אפשר לשלוח אליו פוש ולקבל ממנו פושים</div></div><label style="display:inline-flex;align-items:center;gap:8px"><input type="checkbox" id="pushRule_${role}_${childId}" ${checked ? 'checked' : ''}> פעיל</label></div>`;
   }).join('') || '<div class="small">אין ילדים זמינים להגדרה</div>';
-  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#eef6ff);"><h3 style="margin-top:0">🔔 התראות ופוש</h3><div class="small">כאן ${parentLabel(role)} מגדיר מאילו ילדים יקבל פושים ולאילו ילדים יישלחו פושים כשיבחר "שלח פוש לילד" בפעולות שלו.</div><div style="margin-top:10px">${rows}</div><div style="margin-top:10px"><button onclick="saveParentPushSettings('${role}')">שמור הגדרות פוש</button>${notificationsEnabled() ? `<button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>` : `<button onclick="requestTruePushNotifications()">אפשר התראות במכשיר הזה</button>`}</div></div>`;
+  var linkedText = isDeviceLinkedTo('parent', role) ? 'המכשיר הזה כבר מאושר ל' + parentLabel(role) : renderLinkedDeviceLine();
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#eef6ff);"><h3 style="margin-top:0">🔔 התראות ופוש</h3><div class="small">כאן ${parentLabel(role)} מגדיר מאילו ילדים יקבל פושים ולאילו ילדים יישלחו פושים כשיבחר "שלח פוש לילד" בפעולות שלו.</div><div class="small" style="margin-top:6px;color:#475569;">${linkedText}</div><div style="margin-top:10px">${rows}</div><div style="margin-top:10px"><button onclick="saveParentPushSettings('${role}')">שמור הגדרות פוש</button><button onclick="approveDeviceForCurrentUser('parent','${role}')">אשר את המכשיר הזה ל${parentLabel(role)}</button>${notificationsEnabled() ? `<button class="secondary" onclick="disableTruePushNotifications()">בטל התראות במכשיר הזה</button>` : `<button onclick="requestTruePushNotifications()">אפשר התראות במכשיר הזה</button>`}</div></div>`;
 }
 async function saveParentPushSettings(role){
   APP_SETTINGS.pushMatrix = APP_SETTINGS.pushMatrix || {};
@@ -1923,7 +2012,6 @@ async function saveParentPushSettings(role){
     APP_SETTINGS.pushMatrix[role][childId] = !!(el && el.checked);
   });
   await saveAppSettings();
-  await syncCurrentTokenProfile('parent', role);
   appAlert('הגדרות הפוש נשמרו');
   parent(role);
 }
@@ -1971,7 +2059,7 @@ function parent(role){
   if(!SELECTED_PARENT_CHILD[role] || !ids.includes(SELECTED_PARENT_CHILD[role])) SELECTED_PARENT_CHILD[role] = ids[0];
   var childRadioOptions = ids.map(function(childId){ return `<label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="${childId}" ${SELECTED_PARENT_CHILD[role]===childId?'checked':''} onchange="setSelectedChild('${role}','${childId}')"> ${childLabel(childId)}</label>`; }).join('');
   document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><div class="small" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:8px"><input id="pushToSelectedChild" type="checkbox" checked> שלח פוש לילד הזה אם ההורה סימן אותו במטריצת הפוש</label></div><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}${renderPushManager(role)}${renderMasterBroadcastCard()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
-  loadParentSummary(role); loadPendingApprovals(role); syncCurrentTokenProfile('parent', role);
+  loadParentSummary(role); loadPendingApprovals(role);
 }
 async function addPresetTask(role){
   var name=document.getElementById('taskName').value.trim();
@@ -2033,7 +2121,7 @@ async function saveChildAppearance(child){
 
 async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){appAlert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); appAlert('הסיסמה החדשה נשמרה'); childLogin(child); }
 function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
-(async function start(){ try { await ensureSettings(); startNotificationListener(); await ensurePushSetup(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
+(async function start(){ try { await ensureSettings(); startNotificationListener(); await ensurePushSetup(); await refreshLinkedDeviceState(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
 </script>
 </body>
 </html>
