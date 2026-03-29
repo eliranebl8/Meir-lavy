@@ -6,7 +6,6 @@
   <title>כוכבים</title>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -233,7 +232,7 @@
 
     .logs-box {
       margin-top: 10px;
-      max-height: 120px;
+      max-height: 220px;
       overflow: auto;
       border: 1px solid #e5e7eb;
       border-radius: 16px;
@@ -505,7 +504,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.6.0";
+var APP_VERSION = "2.5.2";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -1188,7 +1187,6 @@ function home(){
         ${customSections}
         <br>
         <div class="grid-buttons">${parentButtons}</div>
-        ${renderPushCard('guest','')}
         <div id="versionTapZone" onclick="adminVersionTap()" style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95; cursor:pointer;">גרסה ${APP_VERSION}</div>
       </div>
     </div>`;
@@ -1307,7 +1305,7 @@ async function child(id){
             <div style="margin-top:8px">
               <button onclick="saveChildAppearance('${id}')">שמור עיצוב אישי</button>
             </div>
-          </div>${renderPushCard('child', id)}<div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
+          </div><div style="margin-top:14px"><button class="secondary" onclick="home()">חזרה</button></div></div>`;
   var emojiInput = document.getElementById('kidNewEmoji');
   var colorInput = document.getElementById('kidNewColor');
   var previewEl = document.getElementById('kidAppearancePreview');
@@ -1319,7 +1317,6 @@ async function child(id){
   if(emojiInput) emojiInput.addEventListener('input', refreshKidPreview);
   if(colorInput) colorInput.addEventListener('input', refreshKidPreview);
   refreshKidPreview();
-  updatePushIdentity('child', id);
 }
 async function requestQuickTask(childId, role, taskIndex){
   var task = APP_SETTINGS.presetTasks[childId]?.[role]?.[taskIndex];
@@ -1330,7 +1327,6 @@ async function requestQuickTask(childId, role, taskIndex){
   data.logs.unshift({ parent:role, action:'task_pending', amount:safeNumber(task.stars), note:task.name, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
-  await queuePushNotification('בקשת משימה חדשה', childLabel(childId) + ' שלח משימה לבדיקה: ' + task.name, 'parents_for_child', childId, { kind:'task_pending' });
   appAlert('המשימה נשלחה לבדיקה ✅');
   child(childId);
 }
@@ -1345,7 +1341,6 @@ async function requestShopPurchase(childId, itemIndex){
   data.logs.unshift({ parent:user||'mother', action:'shop_pending', amount:safeNumber(item.price), note:'בקשה למימוש פרס: '+item.name, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
-  await queuePushNotification('בקשת פרס חדשה', childLabel(childId) + ' ביקש לממש פרס: ' + item.name, 'parents_for_child', childId, { kind:'shop_pending' });
   appAlert('הבקשה נשלחה לאישור 🎁');
   child(childId);
 }
@@ -1371,7 +1366,6 @@ async function requestCustomGift(childId){
   data.logs.unshift({ parent:'child', action:'custom_request_pending', amount:price, note:'בקשה אישית: ' + itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
-  await queuePushNotification('בקשת מתנה אישית', childLabel(childId) + ' ביקש: ' + itemName, 'parents_for_child', childId, { kind:'custom_pending' });
   appAlert('הבקשה נשלחה להורים 🎁');
   child(childId);
 }
@@ -1387,7 +1381,6 @@ async function approvePendingTask(childId, taskId){
   data.logs.unshift({ parent:pt.role, action:'task_approved', amount:safeNumber(pt.stars), note:pt.taskName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await queuePushNotification('משימה אושרה', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את המשימה: ' + pt.taskName, 'all_for_child', childId, { kind:'task_approved' });
   appAlert('המשימה אושרה 🌟');
   parent(user);
 }
@@ -1401,7 +1394,6 @@ async function rejectPendingTask(childId, taskId){
   data.logs.unshift({ parent:pt.role, action:'task_rejected', amount:safeNumber(pt.stars), note:pt.taskName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await queuePushNotification('משימה נדחתה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את המשימה: ' + pt.taskName, 'all_for_child', childId, { kind:'task_rejected' });
   appAlert('המשימה נדחתה');
   parent(user);
 }
@@ -1420,7 +1412,6 @@ async function approvePendingShop(childId, requestId){
   data.logs.unshift({ parent:user, action:'shop_approved', amount:price, note:'אושר מימוש פרס: '+req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await queuePushNotification('פרס אושר', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את הפרס: ' + req.itemName, 'all_for_child', childId, { kind:'shop_approved' });
   appAlert('הפרס אושר 🎉');
   parent(user);
 }
@@ -1434,7 +1425,6 @@ async function rejectPendingShop(childId, requestId){
   data.logs.unshift({ parent:user, action:'shop_rejected', amount:safeNumber(req.price), note:'נדחתה בקשת פרס: '+req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await queuePushNotification('פרס נדחה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את הפרס: ' + req.itemName, 'all_for_child', childId, { kind:'shop_rejected' });
   appAlert('הבקשה נדחתה');
   parent(user);
 }
@@ -1454,7 +1444,6 @@ async function approvePendingCustomGift(childId, requestId){
   data.logs.unshift({ parent:user, action:'custom_request_approved', amount:price, note:'אושרה בקשה אישית: ' + req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await queuePushNotification('בקשה אישית אושרה', parentLabel(user) + ' אישר ל' + childLabel(childId) + ' את הבקשה: ' + req.itemName, 'all_for_child', childId, { kind:'custom_approved' });
   appAlert('הבקשה האישית אושרה 🎉');
   parent(user);
 }
@@ -1477,7 +1466,6 @@ async function rejectPendingCustomGift(childId, requestId){
   }
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await queuePushNotification(allRefused ? 'בקשה אישית נדחתה' : 'הורה סירב לבקשה', (allRefused ? 'כל ההורים סירבו ל' : parentLabel(user) + ' סירב ל') + childLabel(childId) + ' עבור ' + req.itemName, 'all_for_child', childId, { kind:'custom_rejected', allRefused: allRefused });
   appAlert(allRefused ? 'כל ההורים סירבו לבקשה' : 'הסירוב נשמר, מחכים לשאר ההורים');
   parent(user);
 }
@@ -1552,11 +1540,9 @@ function parent(role){
   if(!ids.length){ appAlert('אין לך כרגע ילדים מורשים'); home(); return; }
   if(!SELECTED_PARENT_CHILD[role] || !ids.includes(SELECTED_PARENT_CHILD[role])) SELECTED_PARENT_CHILD[role] = ids[0];
   var childRadioOptions = ids.map(function(childId){ return `<label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="${childId}" ${SELECTED_PARENT_CHILD[role]===childId?'checked':''} onchange="setSelectedChild('${role}','${childId}')"> ${childLabel(childId)}</label>`; }).join('');
-  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}${renderPushCard('parent', role)}<button class="secondary" onclick="home()">חזרה</button></div>`;
-  updatePushIdentity('parent', role);
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
   loadParentSummary(role); loadPendingApprovals(role);
 }
-
 async function addPresetTask(role){
   var name=document.getElementById('taskName').value.trim();
   var stars=Number(document.getElementById('taskStars').value);
