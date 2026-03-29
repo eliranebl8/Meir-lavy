@@ -1166,7 +1166,13 @@ function home(){
   var customSections = Object.keys(grouped.custom).map(function(groupName){
     return `<div class="card" style="margin-top:12px; background:linear-gradient(180deg,#ffffff,#f8fafc)"><h3 style="margin-top:0">${groupName}</h3><div class="grid-buttons">${grouped.custom[groupName].join('')}</div></div>`;
   }).join('');
-  var parentButtons = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
+  var orderedParentIds = Object.keys(APP_SETTINGS.parentsDirectory).sort(function(a,b){
+    var aMaster = isMasterParent(a) ? 1 : 0;
+    var bMaster = isMasterParent(b) ? 1 : 0;
+    if(aMaster !== bMaster) return bMaster - aMaster;
+    return a.localeCompare(b);
+  });
+  var parentButtons = orderedParentIds.map(function(parentId){
     var p = parentConfig(parentId);
     return `<button onclick="login('${parentId}')" style="background:${p.color}">${p.emoji} כניסת ${parentLabel(parentId)}</button>`;
   }).join('');
