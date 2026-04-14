@@ -4,171 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>כוכבים</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js">
-async function cancelCustomRequest(reqId, childId){
-  var data = await getChildData(childId);
-  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
-  if(!req){ return; }
-
-  req.status = 'cancelled';
-
-  data.logs.unshift({
-    parent:'admin',
-    action:'custom_request_cancelled',
-    amount:req.price,
-    note:'בוטל ע"י מנהל: ' + req.itemName,
-    createdAtText:nowText(),
-    createdAtMillis:Date.now()
-  });
-
-  data.logs = data.logs.slice(0,100);
-
-  await saveChildData(childId, data);
-
-  appAlert('הבקשה נמחקה בהצלחה');
-  loadPendingApprovals();
-}
-
-
-function updateRequestStatus(req){
-  const statuses = Object.values(req.parentStatus || {});
-  if(statuses.includes('rejected')){
-    req.status = 'rejected';
-  } else if(statuses.every(s=>s==='approved')){
-    req.status = 'approved';
-  } else {
-    req.status = 'partial';
-  }
-}
-
-
-async function cancelAllRequests(){
-  if(!confirm('לבטל את כל הבקשות?')) return;
-
-  const childrenIds = Object.keys(CHILDREN);
-
-  for(const childId of childrenIds){
-    let data = await getChildData(childId);
-    (data.pendingCustomRequests||[]).forEach(req=>{
-      req.status = 'cancelled';
-    });
-    await saveChildData(childId, data);
-  }
-
-  appAlert('כל הבקשות בוטלו בהצלחה');
-}
-
-</script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js">
-async function cancelCustomRequest(reqId, childId){
-  var data = await getChildData(childId);
-  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
-  if(!req){ return; }
-
-  req.status = 'cancelled';
-
-  data.logs.unshift({
-    parent:'admin',
-    action:'custom_request_cancelled',
-    amount:req.price,
-    note:'בוטל ע"י מנהל: ' + req.itemName,
-    createdAtText:nowText(),
-    createdAtMillis:Date.now()
-  });
-
-  data.logs = data.logs.slice(0,100);
-
-  await saveChildData(childId, data);
-
-  appAlert('הבקשה נמחקה בהצלחה');
-  loadPendingApprovals();
-}
-
-
-function updateRequestStatus(req){
-  const statuses = Object.values(req.parentStatus || {});
-  if(statuses.includes('rejected')){
-    req.status = 'rejected';
-  } else if(statuses.every(s=>s==='approved')){
-    req.status = 'approved';
-  } else {
-    req.status = 'partial';
-  }
-}
-
-
-async function cancelAllRequests(){
-  if(!confirm('לבטל את כל הבקשות?')) return;
-
-  const childrenIds = Object.keys(CHILDREN);
-
-  for(const childId of childrenIds){
-    let data = await getChildData(childId);
-    (data.pendingCustomRequests||[]).forEach(req=>{
-      req.status = 'cancelled';
-    });
-    await saveChildData(childId, data);
-  }
-
-  appAlert('כל הבקשות בוטלו בהצלחה');
-}
-
-</script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js">
-async function cancelCustomRequest(reqId, childId){
-  var data = await getChildData(childId);
-  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
-  if(!req){ return; }
-
-  req.status = 'cancelled';
-
-  data.logs.unshift({
-    parent:'admin',
-    action:'custom_request_cancelled',
-    amount:req.price,
-    note:'בוטל ע"י מנהל: ' + req.itemName,
-    createdAtText:nowText(),
-    createdAtMillis:Date.now()
-  });
-
-  data.logs = data.logs.slice(0,100);
-
-  await saveChildData(childId, data);
-
-  appAlert('הבקשה נמחקה בהצלחה');
-  loadPendingApprovals();
-}
-
-
-function updateRequestStatus(req){
-  const statuses = Object.values(req.parentStatus || {});
-  if(statuses.includes('rejected')){
-    req.status = 'rejected';
-  } else if(statuses.every(s=>s==='approved')){
-    req.status = 'approved';
-  } else {
-    req.status = 'partial';
-  }
-}
-
-
-async function cancelAllRequests(){
-  if(!confirm('לבטל את כל הבקשות?')) return;
-
-  const childrenIds = Object.keys(CHILDREN);
-
-  for(const childId of childrenIds){
-    let data = await getChildData(childId);
-    (data.pendingCustomRequests||[]).forEach(req=>{
-      req.status = 'cancelled';
-    });
-    await saveChildData(childId, data);
-  }
-
-  appAlert('כל הבקשות בוטלו בהצלחה');
-}
-
-</script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -684,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.8.5";
+var APP_VERSION = "2.8.6";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -1520,6 +1358,7 @@ function renderAdminPasswordsHtml(){
     <div class="small">הורים / מנהלים</div>${parentRows || '<div class="small">אין הורים</div>'}
     <hr><div class="small">ילדים</div>${childRows || '<div class="small">אין ילדים</div>'}
   </div>`;
+  loadAdminRequestManager();
 }
 
 
@@ -1547,10 +1386,31 @@ async function saveAdminPushRules(){
   renderAdminPanel();
 }
 
+
+async function loadAdminRequestManager(){
+  var ids = Object.keys(APP_SETTINGS.childrenDirectory || {});
+  var parts = [];
+  for(var i=0;i<ids.length;i++){
+    var childId = ids[i];
+    var data = await getChildData(childId);
+    (data.pendingCustomRequests||[]).forEach(function(req){
+      var statusLabel = req.status === 'pending' ? 'פתוחה' : (req.status || 'לא ידוע');
+      var targetText = req.targetParent ? (' • ל' + parentLabel(req.targetParent)) : '';
+      parts.push(`<div class="task-line"><div><strong>${childLabel(childId)}</strong> • ${req.itemName} • ${req.price} כוכבים${targetText}<div class="small">סטטוס: ${statusLabel} • ${req.requestedAtText || ''}</div></div><div><button class="danger mini" onclick="cancelCustomRequest('${req.id}','${childId}')">בטל בקשה</button></div></div>`);
+    });
+  }
+  var el = document.getElementById('adminRequestsBox');
+  if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין בקשות כרגע</div>';
+}
+
+function renderAdminRequestManager(){
+  return `<div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#fff1f2)"><h3 style="margin-top:0">ניהול בקשות מתנה אישית</h3><div class="small">מכאן אפשר לבטל כל בקשה קיימת, גם אם היא כבר נשלחה להורה מסוים.</div><div style="margin-top:10px"><button class="danger" onclick="cancelAllRequests()">בטל את כל הבקשות הפתוחות</button></div><div id="adminRequestsBox" style="margin-top:10px;text-align:right"><div class="small">טוען בקשות...</div></div></div>`;
+}
+
 function renderAdminPanel(){
   document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:1180px"><h2>ממשק ניהול מתקדם</h2><div class="small">כאן אפשר לערוך ילדים, הורים, סיסמאות, צבעים, אייקונים, קבוצות והרשאות</div>
     ${renderAdminPanelPasswordManager()}
-    ${renderAdminPasswordsHtml()}
+    ${renderAdminPasswordsHtml()}${renderAdminRequestManager()}
     <div class="row">
       <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f8fafc)">
         <h3 style="margin-top:0">הוספת הורה / מנהל</h3>
@@ -1596,6 +1456,7 @@ function renderAdminPanel(){
     <div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#f0fdf4)"><h3 style="margin-top:0">הרשאות מסודרות</h3><div class="small">כל שורה היא ילד וכל עמודה היא הורה. סמן למי מותר לנהל כל ילד.</div>${renderAdminPermissionsHtml()}<div style="margin-top:12px"><button onclick="saveAdminPermissions()">שמור הרשאות</button></div></div><div class="card" style="margin-top:12px;background:linear-gradient(180deg,#ffffff,#eef6ff)"><h3 style="margin-top:0">מטריצת פוש הורה ↔ ילד</h3><div class="small">כאן קובעים אילו ילדים רואים את הפושים של כל הורה, ואילו פושים מכל ילד מגיעים לאותו הורה.</div>${renderAdminPushRulesHtml()}<div style="margin-top:12px"><button onclick="saveAdminPushRules()">שמור מטריצת פוש</button></div></div>
     <button class="secondary" onclick="home()">חזרה</button>
   </div>`;
+  loadAdminRequestManager();
 }
 
 function safeNumber(v){ return Number(v || 0); }
@@ -1850,6 +1711,7 @@ function home(){
         <div id="versionTapZone" onclick="adminVersionTap()" style="text-align:center; margin-top:18px; font-size:13px; color:#94a3b8; opacity:0.95; cursor:pointer;">גרסה ${APP_VERSION}</div>
       </div>
     </div>`;
+  loadAdminRequestManager();
 }
 function toggleMoreKids(){ var el=document.getElementById('moreKidsBox'); if(!el) return; el.style.display = el.style.display==='none' ? 'block' : 'none'; }
 
@@ -1910,25 +1772,38 @@ function renderQuickTaskButtons(id, data){
 function renderShopForChild(id, data){
   if(!APP_SETTINGS.sharedShop.length) return '<div class="small">החנות עדיין ריקה</div>';
   return APP_SETTINGS.sharedShop.map(function(item,index){
-    var isPending = (data.pendingShopRequests||[]).some(function(req){ return req.itemIndex===index && req.status==='pending' && req.targetParent === role; });
+    var isPending = (data.pendingShopRequests||[]).some(function(req){
+      return req.itemIndex===index && req.status==='pending';
+    });
     return `<div class="shop-line"><div><strong>${item.name}</strong> • ${item.price} כוכבים</div>${isPending ? `<button class="shop mini secondary" disabled>ממתין לאישור ⏳</button>` : `<button class="shop mini" onclick="requestShopPurchase('${id}',${index})">ממש</button>`}</div>`;
   }).join('');
 }
 
 function renderCustomGiftRequestSection(id, data){
-  var openRequest = (data.pendingCustomRequests||[]).find(function(req){ return req.status==='pending' && req.targetParent === role; });
+  var openRequest = (data.pendingCustomRequests||[]).find(function(req){
+    return req.status==='pending';
+  });
   if(openRequest){
     var refused = (openRequest.refusedBy||[]).map(function(parentId){ return parentLabel(parentId); }).join(' • ');
-    return `<div class="task-line"><div><strong>${openRequest.itemName}</strong> • ${openRequest.price} כוכבים</div><div class="small">ממתין לאישור ⏳ ${refused ? '<br>סירבו בינתיים: ' + refused : ''}</div></div>`;
+    var targetText = openRequest.targetParent ? ('<br>נשלח אל: ' + parentLabel(openRequest.targetParent)) : '';
+    return `<div class="task-line"><div><strong>${openRequest.itemName}</strong> • ${openRequest.price} כוכבים</div><div class="small">ממתין לאישור ⏳ ${refused ? '<br>סירבו בינתיים: ' + refused : ''}${targetText}</div></div>`;
   }
   return `<input id="customGiftName" placeholder="מה אתה רוצה לבקש?" style="width:90%;"><input id="customGiftPrice" type="number" placeholder="כמה כוכבים אתה מוכן לשלם?" style="width:90%;"><br><button class="shop" onclick="requestCustomGift('` + id + `')">שלח בקשה</button>`;
 }
 
 function renderPendingStatusForChild(id, data){
   var parts = [];
-  (data.pendingTasks||[]).filter(pt=>pt.status==='pending').forEach(function(pt){ parts.push(`<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`); });
-  (data.pendingShopRequests||[]).filter(req=>req.status==='pending' && req.targetParent === role).forEach(function(req){ parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מימוש פרס</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}</div></div>`); });
-    (data.pendingCustomRequests||[]).filter(function(req){ return req.status==='pending' && req.targetParent === role; }).forEach(function(req){ var refused=(req.refusedBy||[]).map(function(parentId){ return parentLabel(parentId); }).join(' • '); parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מתנה אישית</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}${refused ? '<br>סירבו בינתיים: ' + refused : ''}</div></div>`); });
+  (data.pendingTasks||[]).filter(function(pt){ return pt.status==='pending'; }).forEach(function(pt){
+    parts.push(`<div class="task-line"><div><strong>${pt.taskName}</strong> • ${pt.stars} כוכבים • מאת ${parentLabel(pt.role)}</div><div class="small">ממתין לבדיקה ⏳ • ${pt.requestedAtText || ''}</div></div>`);
+  });
+  (data.pendingShopRequests||[]).filter(function(req){ return req.status==='pending'; }).forEach(function(req){
+    parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מימוש פרס</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}</div></div>`);
+  });
+  (data.pendingCustomRequests||[]).filter(function(req){ return req.status==='pending'; }).forEach(function(req){
+    var refused=(req.refusedBy||[]).map(function(parentId){ return parentLabel(parentId); }).join(' • ');
+    var targetText = req.targetParent ? ('<br>נשלח אל: ' + parentLabel(req.targetParent)) : '';
+    parts.push(`<div class="task-line"><div><strong>${req.itemName}</strong> • ${req.price} כוכבים • בקשת מתנה אישית</div><div class="small">ממתין לאישור ⏳ • ${req.requestedAtText || ''}${refused ? '<br>סירבו בינתיים: ' + refused : ''}${targetText}</div></div>`);
+  });
   return parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לבדיקה כרגע</div>';
 }
 async function child(id){
@@ -2005,8 +1880,18 @@ async function requestShopPurchase(childId, itemIndex){
   var data = await getChildData(childId);
   var total = getCurrentTotal(data, childId);
   if(total < safeNumber(item.price)){ appAlert('אין מספיק כוכבים בשביל הפרס הזה 😅'); return; }
-  if((data.pendingShopRequests||[]).some(req=>req.itemIndex===itemIndex && req.status==='pending' && req.targetParent === role)){ appAlert('הפרס הזה כבר ממתין לאישור ⏳'); return; }
-  data.pendingShopRequests.unshift({ id:'shop_'+Date.now(), itemIndex:itemIndex, itemName:item.name, price:safeNumber(item.price), status:'pending', requestedAtText:nowText(), requestedAtMillis:Date.now() });
+  if((data.pendingShopRequests||[]).some(function(req){
+    return req.itemIndex===itemIndex && req.status==='pending';
+  })){ appAlert('הפרס הזה כבר ממתין לאישור ⏳'); return; }
+  data.pendingShopRequests.unshift({
+    id:'shop_'+Date.now(),
+    itemIndex:itemIndex,
+    itemName:item.name,
+    price:safeNumber(item.price),
+    status:'pending',
+    requestedAtText:nowText(),
+    requestedAtMillis:Date.now()
+  });
   data.logs.unshift({ parent:user||'mother', action:'shop_pending', amount:safeNumber(item.price), note:'בקשה למימוש פרס: '+item.name, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId, data);
@@ -2026,7 +1911,6 @@ async function requestCustomGift(childId){
   }
 
   var data = await getChildData(childId);
-
   var allowedParents = getAllowedParentsForChild(childId);
 
   var validParent = allowedParents.find(function(parentId){
@@ -2039,19 +1923,24 @@ async function requestCustomGift(childId){
   }
 
   if((data.pendingCustomRequests||[]).some(function(req){
-    return req.status==='pending' && req.targetParent === role;
+    return req.status==='pending';
   })){
     appAlert('כבר יש בקשה אישית שממתינה לאישור ⏳');
     return;
   }
 
+  var parentStatus = {};
+  Object.keys(APP_SETTINGS.parentsDirectory || {}).forEach(function(parentId){
+    parentStatus[parentId] = parentId === validParent ? 'pending' : 'not_target';
+  });
+
   data.pendingCustomRequests.unshift({
-    parentStatus: { dad:'pending', mom:'pending', grandma:'pending' },
     id:'custom_'+Date.now(),
     itemName:itemName,
     price:price,
     status:'pending',
     targetParent: validParent,
+    parentStatus: parentStatus,
     refusedBy:[],
     approvedBy:'',
     requestedAtText:nowText(),
@@ -2062,7 +1951,7 @@ async function requestCustomGift(childId){
     parent:'child',
     action:'custom_request_pending',
     amount:price,
-    note:'בקשה אישית: ' + itemName,
+    note:'בקשה אישית: ' + itemName + ' | נשלח אל ' + parentLabel(validParent),
     createdAtText:nowText(),
     createdAtMillis:Date.now()
   });
@@ -2079,7 +1968,6 @@ async function requestCustomGift(childId){
   });
 
   appAlert('הבקשה נשלחה להורה המתאים 🎁');
-
   child(childId);
 }
 
@@ -2153,11 +2041,23 @@ async function approvePendingCustomGift(childId, requestId){
   if(idx===-1) return;
   var req = data.pendingCustomRequests[idx];
   if(!userCanManageChild(user, childId)){ appAlert('אין לך הרשאה לילד הזה'); return; }
+  if(req.targetParent && req.targetParent !== user){
+    appAlert('הבקשה הזו לא שייכת אליך');
+    return;
+  }
+
   var price = safeNumber(req.price);
-  var allowed = getAllowedParentsForChild(childId);
-  var left = price;
-  var pools = allowed.map(function(parentId){ return {key:parentId, value:safeNumber(data.scores[parentId])}; }).sort(function(a,b){ return b.value-a.value; });
-  pools.forEach(function(pool){ if(left<=0) return; var take=Math.min(pool.value,left); data.scores[pool.key]=Math.max(0,safeNumber(data.scores[pool.key])-take); left-=take; });
+  if(safeNumber(data.scores[user]) < price){
+    appAlert('אין לך מספיק כוכבים לאשר את הבקשה');
+    return;
+  }
+
+  data.scores[user] = Math.max(0, safeNumber(data.scores[user]) - price);
+  req.status = 'approved';
+  req.approvedBy = user;
+  req.parentStatus = req.parentStatus || {};
+  req.parentStatus[user] = 'approved';
+
   data.pendingCustomRequests.splice(idx,1);
   data.logs.unshift({ parent:user, action:'custom_request_approved', amount:price, note:'אושרה בקשה אישית: ' + req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
@@ -2172,21 +2072,23 @@ async function rejectPendingCustomGift(childId, requestId){
   if(idx===-1) return;
   var req = data.pendingCustomRequests[idx];
   if(!userCanManageChild(user, childId)){ appAlert('אין לך הרשאה לילד הזה'); return; }
+  if(req.targetParent && req.targetParent !== user){
+    appAlert('הבקשה הזו לא שייכת אליך');
+    return;
+  }
+
   req.refusedBy = req.refusedBy || [];
   if(req.refusedBy.indexOf(user) === -1) req.refusedBy.push(user);
-  var allowedParents = getAllowedParentsForChild(childId);
-  var allRefused = allowedParents.every(function(parentId){ return req.refusedBy.indexOf(parentId) !== -1; });
-  if(allRefused){
-    data.pendingCustomRequests.splice(idx,1);
-    data.logs.unshift({ parent:user, action:'custom_request_rejected', amount:safeNumber(req.price), note:'נדחתה בקשה אישית: ' + req.itemName + ' | סירבו: ' + req.refusedBy.map(function(parentId){ return parentLabel(parentId); }).join(', '), createdAtText:nowText(), createdAtMillis:Date.now() });
-  } else {
-    data.pendingCustomRequests[idx] = req;
-    data.logs.unshift({ parent:user, action:'custom_request_rejected', amount:safeNumber(req.price), note:'סירב לבקשה אישית: ' + req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
-  }
+  req.parentStatus = req.parentStatus || {};
+  req.parentStatus[user] = 'rejected';
+  req.status = 'rejected';
+
+  data.pendingCustomRequests.splice(idx,1);
+  data.logs.unshift({ parent:user, action:'custom_request_rejected', amount:safeNumber(req.price), note:'נדחתה בקשה אישית: ' + req.itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
   data.logs = data.logs.slice(0,100);
   await saveChildData(childId,data);
-  await notifyParentAction(user, childId, allRefused ? 'בקשה אישית נדחתה' : 'סירוב לבקשה אישית', allRefused ? ('כל ההורים סירבו ל' + childLabel(childId) + ' על: ' + req.itemName) : (parentLabel(user) + ' סירב ל' + childLabel(childId) + ' על: ' + req.itemName), true);
-  appAlert(allRefused ? 'כל ההורים סירבו לבקשה' : 'הסירוב נשמר, מחכים לשאר ההורים');
+  await notifyParentAction(user, childId, 'בקשה אישית נדחתה', parentLabel(user) + ' דחה ל' + childLabel(childId) + ' את הבקשה: ' + req.itemName, true);
+  appAlert('הבקשה נדחתה');
   parent(user);
 }
 
@@ -2195,7 +2097,7 @@ async function loadPendingApprovals(role){
   var parts = [];
   for(var i=0;i<ids.length;i++){ var id=ids[i]; var data=await getChildData(id);
     (data.pendingTasks||[]).filter(pt=>pt.status==='pending' && pt.role===role).forEach(function(pt){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • ${pt.taskName} • ${pt.stars} כוכבים<div class="small">${pt.requestedAtText||''}</div></div><div><button class="mini" onclick="approvePendingTask('${id}','${pt.id}')">אשר</button><button class="danger mini" onclick="rejectPendingTask('${id}','${pt.id}')">דחה</button></div></div>`); });
-    (data.pendingShopRequests||[]).filter(req=>req.status==='pending' && req.targetParent === role).forEach(function(req){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • בקשת פרס: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText||''}</div></div><div><button class="mini shop" onclick="approvePendingShop('${id}','${req.id}')">אשר פרס</button><button class="danger mini" onclick="rejectPendingShop('${id}','${req.id}')">דחה</button></div></div>`); });
+    (data.pendingShopRequests||[]).filter(req=>req.status==='pending').forEach(function(req){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • בקשת פרס: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText||''}</div></div><div><button class="mini shop" onclick="approvePendingShop('${id}','${req.id}')">אשר פרס</button><button class="danger mini" onclick="rejectPendingShop('${id}','${req.id}')">דחה</button></div></div>`); });
     (data.pendingCustomRequests||[])
   .filter(function(req){
     return req.status==='pending' && req.targetParent === role &&
@@ -2385,55 +2287,60 @@ function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getEl
 
 async function cancelCustomRequest(reqId, childId){
   var data = await getChildData(childId);
-  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
-  if(!req){ return; }
+  var idx = (data.pendingCustomRequests||[]).findIndex(function(r){ return r.id===reqId; });
+  if(idx===-1){ return; }
+  var req = data.pendingCustomRequests[idx];
 
-  req.status = 'cancelled';
-
+  data.pendingCustomRequests.splice(idx,1);
   data.logs.unshift({
     parent:'admin',
-    action:'custom_request_cancelled',
-    amount:req.price,
+    action:'custom_request_rejected',
+    amount:safeNumber(req.price),
     note:'בוטל ע"י מנהל: ' + req.itemName,
     createdAtText:nowText(),
     createdAtMillis:Date.now()
   });
-
   data.logs = data.logs.slice(0,100);
 
   await saveChildData(childId, data);
 
-  appAlert('הבקשה נמחקה בהצלחה');
-  loadPendingApprovals();
+  appAlert('הבקשה בוטלה בהצלחה');
+  if(document.getElementById('adminRequestsBox')) loadAdminRequestManager();
+  if(document.getElementById('pendingApprovals')) loadPendingApprovals(user);
 }
 
 
-function updateRequestStatus(req){
-  const statuses = Object.values(req.parentStatus || {});
-  if(statuses.includes('rejected')){
-    req.status = 'rejected';
-  } else if(statuses.every(s=>s==='approved')){
-    req.status = 'approved';
-  } else {
-    req.status = 'partial';
-  }
-}
 
 
 async function cancelAllRequests(){
-  if(!confirm('לבטל את כל הבקשות?')) return;
+  var ok = await appConfirm('לבטל את כל הבקשות הפתוחות?','ביטול כל הבקשות');
+  if(!ok) return;
 
-  const childrenIds = Object.keys(CHILDREN);
+  var childrenIds = Object.keys(APP_SETTINGS.childrenDirectory || {});
 
-  for(const childId of childrenIds){
-    let data = await getChildData(childId);
-    (data.pendingCustomRequests||[]).forEach(req=>{
-      req.status = 'cancelled';
-    });
-    await saveChildData(childId, data);
+  for(var i=0;i<childrenIds.length;i++){
+    var childId = childrenIds[i];
+    var data = await getChildData(childId);
+    var open = (data.pendingCustomRequests||[]).filter(function(req){ return req.status==='pending'; });
+    if(open.length){
+      open.forEach(function(req){
+        data.logs.unshift({
+          parent:'admin',
+          action:'custom_request_rejected',
+          amount:safeNumber(req.price),
+          note:'בוטל ע"י מנהל: ' + req.itemName,
+          createdAtText:nowText(),
+          createdAtMillis:Date.now()
+        });
+      });
+      data.pendingCustomRequests = (data.pendingCustomRequests||[]).filter(function(req){ return req.status!=='pending'; });
+      data.logs = data.logs.slice(0,100);
+      await saveChildData(childId, data);
+    }
   }
 
-  appAlert('כל הבקשות בוטלו בהצלחה');
+  appAlert('כל הבקשות הפתוחות בוטלו בהצלחה');
+  if(document.getElementById('adminRequestsBox')) loadAdminRequestManager();
 }
 
 </script>
