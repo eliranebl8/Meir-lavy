@@ -522,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.8.7";
+var APP_VERSION = "2.8.8";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -2057,6 +2057,8 @@ async function approvePendingShop(childId, requestId){
   if(idx===-1) return;
   var req = data.pendingShopRequests[idx];
   if(!userCanManageChild(user, childId)){ appAlert('אין לך הרשאה לילד הזה'); return; }
+  req.approvedBy = user;
+  req.status = 'approved';
   var price = safeNumber(req.price);
   var allowed = getAllowedParentsForChild(childId);
   var left = price;
@@ -2242,6 +2244,36 @@ function shouldSendPushToSelectedChild(){
   return !!(el && el.checked);
 }
 
+
+function requestStatusText(req){
+  if(!req) return '';
+  if(req.status === 'approved') return 'אושר';
+  if(req.status === 'rejected') return 'נדחה';
+  if(req.status === 'cancelled') return 'בוטל';
+  return 'ממתין';
+}
+function renderMasterRequestsManager(){
+  if(!isMasterParent(user)) return '';
+  return `<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#eef6ff);"><h3 style="margin-top:0">📋 ניהול בקשות</h3><div class="small">כאן אפשר לראות את כל הבקשות האישיות, למי הן נשלחו, מי סירב או אישר, ולבטל בקשות קיימות ידנית.</div><div id="masterRequestsBox"><div class="small">טוען בקשות...</div></div><div style="margin-top:10px"><button class="danger" onclick="cancelAllRequests()">בטל את כל הבקשות</button></div></div>`;
+}
+async function loadMasterRequestsManager(){
+  if(!isMasterParent(user)) return;
+  var childIds = Object.keys(APP_SETTINGS.childrenDirectory || {});
+  var parts = [];
+  for(var i=0;i<childIds.length;i++){
+    var childId = childIds[i];
+    var data = await getChildData(childId);
+    (data.pendingCustomRequests||[]).forEach(function(req){
+      var refused = (req.refusedBy||[]).length ? (req.refusedBy||[]).map(function(parentId){ return parentLabel(parentId); }).join(' • ') : 'אף אחד';
+      var approved = req.approvedBy ? parentLabel(req.approvedBy) : 'אף אחד';
+      var target = req.targetParent ? parentLabel(req.targetParent) : 'לא ידוע';
+      parts.push(`<div class="task-line"><div><strong>${childLabel(childId)}</strong> • ${req.itemName} • ${req.price} כוכבים<div class="small">סטטוס: ${requestStatusText(req)} | נשלח אל: ${target}<br>אישר: ${approved} | סירבו: ${refused}</div></div><div><button class="danger mini" onclick="cancelCustomRequest('${req.id}','${childId}', true)">בטל</button></div></div>`);
+    });
+  }
+  var el = document.getElementById('masterRequestsBox');
+  if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין בקשות קיימות כרגע</div>';
+}
+
 function renderMasterPasswordsManager(){
   if(!isMasterParent(user)) return '';
   var parentRows = Object.keys(APP_SETTINGS.parentsDirectory).map(function(parentId){
@@ -2280,8 +2312,8 @@ function parent(role){
   if(!ids.length){ appAlert('אין לך כרגע ילדים מורשים'); home(); return; }
   if(!SELECTED_PARENT_CHILD[role] || !ids.includes(SELECTED_PARENT_CHILD[role])) SELECTED_PARENT_CHILD[role] = ids[0];
   var childRadioOptions = ids.map(function(childId){ return `<label style="display:inline-flex;align-items:center;gap:8px;margin:6px 10px;"><input type="radio" name="childChoice" value="${childId}" ${SELECTED_PARENT_CHILD[role]===childId?'checked':''} onchange="setSelectedChild('${role}','${childId}')"> ${childLabel(childId)}</label>`; }).join('');
-  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><div class="small" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:8px"><input id="pushToSelectedChild" type="checkbox" checked> שלח פוש לילד הזה אם ההורה סימן אותו במטריצת הפוש</label></div><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}${renderPushManager(role)}${renderMasterBroadcastCard()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
-  loadParentSummary(role); loadPendingApprovals(role);
+  document.getElementById("app").innerHTML = `<div class="card app-shimmer" style="max-width:980px;"><h2>${parentConfig(role).emoji} ${parentLabel(role)}</h2><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fafc);"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;"><h3 style="margin:0">כמה כוכבים יש לכל ילד</h3><button onclick="parent(user)">רענן 🔄</button></div><div id="parentSummary" class="row three"><div class="small">טוען נתונים...</div></div></div><div class="card" style="background:#fafafa; margin-top:0;"><h3 style="margin-top:0">בחר ילד</h3><div>${childRadioOptions}</div></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f8fbff);"><h3 style="margin-top:0">ניהול כוכבים</h3><input id="amount" type="number" value="1" placeholder="כמות כוכבים" style="width:90%;"><input id="note" placeholder="על מה הכוכבים או ההורדה" style="width:90%;"><div class="small" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:8px"><input id="pushToSelectedChild" type="checkbox" checked> שלח פוש לילד הזה אם ההורה סימן אותו במטריצת הפוש</label></div><br><button onclick="addStars()">הוסף</button><button onclick="removeStars()">הסר</button></div><div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff8fb);"><h3 style="margin-top:0">הגדרת יעד ופרס</h3><input id="target" type="number" placeholder="יעד" style="width:90%;"><input id="reward" placeholder="מתנה" style="width:90%;"><br><button onclick="saveTarget()">שמור יעד</button><button onclick="redeem()">מימוש פרס</button></div>${renderPresetTasksEditor(role)}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#fff7ed);"><h3 style="margin-top:0">בקשות שמחכות לאישור</h3><div id="pendingApprovals"><div class="small">טוען בקשות...</div></div></div>${renderShopEditor()}${renderPushManager(role)}${renderMasterBroadcastCard()}<div class="card" style="margin-top:0; background:linear-gradient(180deg,#ffffff,#f5f9ff);"><h3 style="margin-top:0">שינוי סיסמת משתמש</h3><input id="newPass" type="password" placeholder="סיסמה חדשה"><br><button onclick="changePassword()">שמור סיסמה חדשה</button></div>${renderMasterPasswordsManager()}${renderMasterRequestsManager()}<button class="secondary" onclick="home()">חזרה</button></div>`;
+  loadParentSummary(role); loadPendingApprovals(role); if(isMasterParent(role)) loadMasterRequestsManager();
 }
 async function addPresetTask(role){
   var name=document.getElementById('taskName').value.trim();
