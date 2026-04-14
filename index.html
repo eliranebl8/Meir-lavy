@@ -522,7 +522,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.8.1";
+var APP_VERSION = "2.8.2";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -1853,31 +1853,73 @@ async function requestShopPurchase(childId, itemIndex){
   child(childId);
 }
 
+
 async function requestCustomGift(childId){
   var itemName = (document.getElementById('customGiftName')?.value || '').trim();
   var price = Number(document.getElementById('customGiftPrice')?.value || 0);
-  if(!itemName || !price || price < 1){ appAlert('מלא שם מתנה וכמות כוכבים תקינה'); return; }
+
+  if(!itemName || !price || price < 1){
+    appAlert('מלא שם מתנה וכמות כוכבים תקינה');
+    return;
+  }
+
   var data = await getChildData(childId);
-  var total = getCurrentTotal(data, childId);
-  if(total < price){ appAlert('אין מספיק כוכבים לבקשה הזאת 😅'); return; }
-  if((data.pendingCustomRequests||[]).some(function(req){ return req.status==='pending'; })){ appAlert('כבר יש בקשה אישית שממתינה לאישור ⏳'); return; }
+
+  var allowedParents = getAllowedParentsForChild(childId);
+
+  var validParent = allowedParents.find(function(parentId){
+    return safeNumber(data.scores[parentId]) >= price;
+  });
+
+  if(!validParent){
+    appAlert('אין מספיק כוכבים מאף אחד 😅');
+    return;
+  }
+
+  if((data.pendingCustomRequests||[]).some(function(req){
+    return req.status==='pending';
+  })){
+    appAlert('כבר יש בקשה אישית שממתינה לאישור ⏳');
+    return;
+  }
+
   data.pendingCustomRequests.unshift({
     id:'custom_'+Date.now(),
     itemName:itemName,
     price:price,
     status:'pending',
+    targetParent: validParent,
     refusedBy:[],
     approvedBy:'',
     requestedAtText:nowText(),
     requestedAtMillis:Date.now()
   });
-  data.logs.unshift({ parent:'child', action:'custom_request_pending', amount:price, note:'בקשה אישית: ' + itemName, createdAtText:nowText(), createdAtMillis:Date.now() });
+
+  data.logs.unshift({
+    parent:'child',
+    action:'custom_request_pending',
+    amount:price,
+    note:'בקשה אישית: ' + itemName,
+    createdAtText:nowText(),
+    createdAtMillis:Date.now()
+  });
+
   data.logs = data.logs.slice(0,100);
+
   await saveChildData(childId, data);
-  await notifyChildAction(childId, 'בקשת מתנה אישית', childLabel(childId) + ' ביקש: ' + itemName + ' תמורת ' + price + ' כוכבים');
-  appAlert('הבקשה נשלחה להורים 🎁');
+
+  await dispatchPushNotification({
+    title: 'בקשת מתנה אישית',
+    body: childLabel(childId) + ' ביקש: ' + itemName + ' (' + price + ' כוכבים)',
+    targetParents: [validParent],
+    targetChildren: []
+  });
+
+  appAlert('הבקשה נשלחה להורה המתאים 🎁');
+
   child(childId);
 }
+
 
 async function approvePendingTask(childId, taskId){
   var data = await getChildData(childId);
@@ -1991,7 +2033,12 @@ async function loadPendingApprovals(role){
   for(var i=0;i<ids.length;i++){ var id=ids[i]; var data=await getChildData(id);
     (data.pendingTasks||[]).filter(pt=>pt.status==='pending' && pt.role===role).forEach(function(pt){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • ${pt.taskName} • ${pt.stars} כוכבים<div class="small">${pt.requestedAtText||''}</div></div><div><button class="mini" onclick="approvePendingTask('${id}','${pt.id}')">אשר</button><button class="danger mini" onclick="rejectPendingTask('${id}','${pt.id}')">דחה</button></div></div>`); });
     (data.pendingShopRequests||[]).filter(req=>req.status==='pending').forEach(function(req){ parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • בקשת פרס: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText||''}</div></div><div><button class="mini shop" onclick="approvePendingShop('${id}','${req.id}')">אשר פרס</button><button class="danger mini" onclick="rejectPendingShop('${id}','${req.id}')">דחה</button></div></div>`); });
-    (data.pendingCustomRequests||[]).filter(function(req){ return req.status==='pending' && (!req.refusedBy || req.refusedBy.indexOf(role)===-1); }).forEach(function(req){ var refused=(req.refusedBy||[]).map(function(parentId){ return parentLabel(parentId); }).join(' • '); parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • בקשה אישית: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText||''}${refused ? '<br>סירבו בינתיים: ' + refused : ''}</div></div><div><button class="mini shop" onclick="approvePendingCustomGift('${id}','${req.id}')">אשר</button><button class="danger mini" onclick="rejectPendingCustomGift('${id}','${req.id}')">דחה</button></div></div>`); });
+    (data.pendingCustomRequests||[])
+  .filter(function(req){
+    return req.status==='pending' &&
+           req.targetParent === role &&
+           (!req.refusedBy || req.refusedBy.indexOf(role)===-1);
+  }).forEach(function(req){ var refused=(req.refusedBy||[]).map(function(parentId){ return parentLabel(parentId); }).join(' • '); parts.push(`<div class="task-line"><div><strong>${childLabel(id)}</strong> • בקשה אישית: ${req.itemName} • ${req.price} כוכבים<div class="small">${req.requestedAtText||''}${refused ? '<br>סירבו בינתיים: ' + refused : ''}</div></div><div><button class="mini shop" onclick="approvePendingCustomGift('${id}','${req.id}')">אשר</button><button class="danger mini" onclick="rejectPendingCustomGift('${id}','${req.id}')">דחה</button></div></div>`); });
   }
   var el=document.getElementById('pendingApprovals'); if(el) el.innerHTML = parts.length ? parts.join('') : '<div class="small">אין משימות או פרסים שמחכים לאישור כרגע</div>';
 }
@@ -2174,4 +2221,4 @@ function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getEl
 (async function start(){ try { await ensureSettings(); startNotificationListener(); await ensurePushSetup(); await refreshLinkedDeviceState(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
 </script>
 </body>
-</html>
+  </html>
