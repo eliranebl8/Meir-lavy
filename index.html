@@ -4,9 +4,84 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>כוכבים</title>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js">
+async function cancelCustomRequest(reqId, childId){
+  var data = await getChildData(childId);
+  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
+  if(!req){ return; }
+
+  req.status = 'cancelled';
+
+  data.logs.unshift({
+    parent:'admin',
+    action:'custom_request_cancelled',
+    amount:req.price,
+    note:'בוטל ע"י מנהל: ' + req.itemName,
+    createdAtText:nowText(),
+    createdAtMillis:Date.now()
+  });
+
+  data.logs = data.logs.slice(0,100);
+
+  await saveChildData(childId, data);
+
+  appAlert('הבקשה נמחקה בהצלחה');
+  loadPendingApprovals();
+}
+
+</script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js">
+async function cancelCustomRequest(reqId, childId){
+  var data = await getChildData(childId);
+  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
+  if(!req){ return; }
+
+  req.status = 'cancelled';
+
+  data.logs.unshift({
+    parent:'admin',
+    action:'custom_request_cancelled',
+    amount:req.price,
+    note:'בוטל ע"י מנהל: ' + req.itemName,
+    createdAtText:nowText(),
+    createdAtMillis:Date.now()
+  });
+
+  data.logs = data.logs.slice(0,100);
+
+  await saveChildData(childId, data);
+
+  appAlert('הבקשה נמחקה בהצלחה');
+  loadPendingApprovals();
+}
+
+</script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js">
+async function cancelCustomRequest(reqId, childId){
+  var data = await getChildData(childId);
+  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
+  if(!req){ return; }
+
+  req.status = 'cancelled';
+
+  data.logs.unshift({
+    parent:'admin',
+    action:'custom_request_cancelled',
+    amount:req.price,
+    note:'בוטל ע"י מנהל: ' + req.itemName,
+    createdAtText:nowText(),
+    createdAtMillis:Date.now()
+  });
+
+  data.logs = data.logs.slice(0,100);
+
+  await saveChildData(childId, data);
+
+  appAlert('הבקשה נמחקה בהצלחה');
+  loadPendingApprovals();
+}
+
+</script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -522,7 +597,7 @@ firebase.initializeApp({
 });
 var db = firebase.firestore();
 
-var APP_VERSION = "2.8.2";
+var APP_VERSION = "2.8.3";
 var ADMIN_TAP_COUNT = 0;
 var ADMIN_TAP_TIMER = null;
 var MASTER_PASSWORD_HASH = "5af1975db3673915fddad3137d96f9cfc2475a895dba5ed1df4ed6366ccbae46";
@@ -2219,6 +2294,31 @@ async function saveChildAppearance(child){
 async function changeOwnChildPassword(child){ var newPass=document.getElementById('kidNewPass').value; if(newPass===''){appAlert('הסיסמה לא יכולה להיות ריקה'); return;} CHILD_PASSWORDS[child]=newPass; APP_SETTINGS.childrenDirectory[child].password=newPass; await saveAppSettings(); appAlert('הסיסמה החדשה נשמרה'); childLogin(child); }
 function togglePasswordVisibility(inputId, checkboxEl){ var input=document.getElementById(inputId); if(!input) return; input.type = checkboxEl && checkboxEl.checked ? 'text' : 'password'; }
 (async function start(){ try { await ensureSettings(); startNotificationListener(); await ensurePushSetup(); await refreshLinkedDeviceState(); if(ADMIN_BOOTSTRAP_MODE){ renderAdminPanel(); } else { showSplash(); } } catch(e) { document.getElementById('app').innerHTML=`<div class="card">שגיאה: ${ (e && e.message) ? e.message : e }</div>`; } })();
+
+async function cancelCustomRequest(reqId, childId){
+  var data = await getChildData(childId);
+  var req = (data.pendingCustomRequests||[]).find(r=>r.id===reqId);
+  if(!req){ return; }
+
+  req.status = 'cancelled';
+
+  data.logs.unshift({
+    parent:'admin',
+    action:'custom_request_cancelled',
+    amount:req.price,
+    note:'בוטל ע"י מנהל: ' + req.itemName,
+    createdAtText:nowText(),
+    createdAtMillis:Date.now()
+  });
+
+  data.logs = data.logs.slice(0,100);
+
+  await saveChildData(childId, data);
+
+  appAlert('הבקשה נמחקה בהצלחה');
+  loadPendingApprovals();
+}
+
 </script>
 </body>
-  </html>
+</html>
